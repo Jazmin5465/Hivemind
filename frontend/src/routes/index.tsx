@@ -7,6 +7,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { useLive, useLiveActions } from '@/components/LiveProvider';
 import { FleetPanel } from '@/components/FleetPanel';
+import { PageBackdrop } from '@/components/PageBackdrop';
 import {
   agentBriefing, agentQuestions, dedupeOptions, effectiveNow, fixFor, fleets as liveFleets, latestHandoff, parseSequence, whyFlagged, fleetTrucks, fmtCountdown, formatTime, inspectOption, nowOf, optionPlans,
   pendingPriority, planToOption, priorityQueue, recommendations, tickSeconds, type DecisionPlan, type Fleet, type PriorityItem,
@@ -29,7 +30,11 @@ function Dashboard() {
   const loading=!live.ready;
   const queue=loading?[]:pendingPriority(priorityQueue(live),live.decisions);
   const status=live.status==='error'?live.error:live.status==='disconnected'?'Disconnected from the backend.':'';
-  return <main className="mx-auto max-w-7xl space-y-10 p-4 md:p-6">
+  return <><PageBackdrop layers={[
+    { src: '/art/sky.jpg', opacity: 0.16, position: 'center top', size: 'cover' },
+    { src: '/art/back-buildings.jpg', opacity: 0.2, position: 'center bottom', size: 'cover' },
+  ]}/>
+  <main className="relative z-10 mx-auto max-w-7xl space-y-10 p-4 md:p-6">
     <section>
       <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
         <div>
@@ -50,18 +55,20 @@ function Dashboard() {
             <span className="flex items-center gap-2 font-mono text-xs text-muted-foreground"><span className="mr-1 text-lg font-semibold tabular-nums text-primary">{String(i+1).padStart(2,'0')}</span><Icon className={item.severity==='critical'?'text-destructive':'text-muted-foreground'}/><span className={item.scenario?'':'text-destructive'}>{item.scenario?'PROACTIVE WATCH':'ACTIVE FAILURE'}</span>{item.confidence!==undefined&&<span className="ml-auto">{Math.round(item.confidence*100)}% confidence</span>}</span>
             <span className="mt-2 text-lg font-semibold">{item.title}</span><span className="break-all font-mono text-xs text-muted-foreground">{item.facility}</span>
             <span className="mt-4 font-mono text-sm uppercase tracking-wider text-muted-foreground">{item.seconds===undefined?'Status':item.scenario?'Time to shut-in if pump stops':'Time to shut-in'}</span>
-            <span className={`font-mono font-semibold tabular-nums ${item.seconds===undefined?'text-2xl':'text-4xl'}`}>{item.seconds===undefined?(item.category==='pipeline_leak'?'Active leak':'Inspection needed'):fmtCountdown(tickSeconds(live,item.seconds,now)??0)}</span>
+            <span className={`font-mono font-semibold tabular-nums ${item.seconds===undefined?'text-2xl':'countdown-glow text-4xl'}`}>{item.seconds===undefined?(item.category==='pipeline_leak'?'Active leak':'Inspection needed'):fmtCountdown(tickSeconds(live,item.seconds,now)??0)}</span>
           </Button></li>;
         })}
       </ol>
       {loading?<p role="status" className="py-10 text-center text-muted-foreground">{live.status==='connected'?(live.dataset?'Loading live data…':'No active dataset loaded.'):'Connecting to the backend…'}</p>:!queue.length&&<p className="py-10 text-center text-muted-foreground">All queued items have a recorded decision.</p>}
       </div>
     </section>
+    <TvWallBand/>
     <section><h2 className="mb-4 text-lg font-semibold">Emergency fleets</h2><div className="flex gap-3 overflow-x-auto pb-3">{fleets.map(f=>{const busy=fleetTrucks(live,f,now).filter(t=>t.status!=='Standby').length;return <Button key={f.id} variant="outline" aria-expanded={fleetId===f.id} onClick={()=>setFleetId(fleetId===f.id?null:f.id)} className={`fleet-card h-auto min-w-52 flex-col items-start rounded-md border-border bg-card p-4 text-left shadow-none ${fleetId===f.id?'border-accent':''}`}><span className="font-mono text-sm">{f.name}</span><span className="flex items-center gap-2 text-sm text-muted-foreground"><Truck/>{f.trucks-busy} of {f.trucks} trucks available</span><span className="text-xs text-muted-foreground">{busy?`${busy} dispatched`:'All at yard'}</span></Button>;})}</div>{openFleet&&<FleetPanel fleet={openFleet} now={now} close={()=>setFleetId(null)}/>}</section>
     <FleetRecommendations live={live}/>
     <Assistant live={live}/>
+    <BuiltWith/>
     <Dialog open={Boolean(selected)} onOpenChange={open=>{if(!open)setSelected(null);}}><DialogContent className="max-h-[90dvh] w-[calc(100%-2rem)] max-w-4xl overflow-y-auto bg-popover">{selected&&<DecisionModal key={selected.id} item={selected} close={()=>setSelected(null)}/>}</DialogContent></Dialog>
-  </main>;
+  </main></>;
 }
 function FleetRecommendations({live}:{live:LiveData}) {
   const recs=recommendations(live); // computed by the backend (fleet_recommendation)
@@ -224,4 +231,28 @@ function Assistant({live}:{live:LiveData}) {
       :<p className="text-sm text-muted-foreground">No handoff yet. Ask the agent to write one.</p>}
     </div>
   </div></section>;
+}
+
+/** HackUTD Zero Day TV-wall art, blended in as a band between the priority queue and the fleets. */
+function TvWallBand() {
+  // faded on every edge so it melts into the sections above and below
+  const mask = 'radial-gradient(ellipse 50% 50% at 50% 50%, black 35%, transparent 100%)';
+  return <div aria-hidden className="pointer-events-none -my-6 h-40 bg-cover bg-center opacity-25 mix-blend-screen md:h-56"
+    style={{ backgroundImage: 'url(/art/tv-wall.jpg)', maskImage: mask, WebkitMaskImage: mask }}/>;
+}
+
+const SPONSORS = [
+  { name: 'Spacetime', src: '/logos/spacetime.webp' },
+  { name: 'NVIDIA', src: '/logos/nvidia.webp' },
+  { name: 'EOG Resources', src: '/logos/eog.webp' },
+];
+
+/** Sponsor tools and data this console is built on. */
+function BuiltWith() {
+  return <section aria-labelledby="built-with" className="border-t border-border pt-8">
+    <h2 id="built-with" className="mb-6 text-center font-mono text-xs uppercase tracking-[0.3em] text-muted-foreground">Built using tools and data from</h2>
+    <ul className="flex flex-wrap items-center justify-center gap-10">
+      {SPONSORS.map(s=><li key={s.name}><img src={s.src} alt={s.name} className="h-12 w-auto object-contain opacity-90 [filter:brightness(0)_invert(1)] md:h-14"/></li>)}
+    </ul>
+  </section>;
 }

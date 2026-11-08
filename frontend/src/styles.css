@@ -92,6 +92,8 @@
 }
 
 @utility glow-cyan { text-shadow: 0 0 8px oklch(0.82 0.13 200 / 0.8); }
+/* countdown timers: a slight light-blue glow */
+@utility countdown-glow { color: oklch(0.93 0.06 225); text-shadow: 0 0 6px oklch(0.85 0.11 225 / 0.65), 0 0 16px oklch(0.78 0.13 230 / 0.35); }
 @utility glow-magenta { text-shadow: 0 0 8px oklch(0.68 0.27 330 / 0.9); }
 @utility glow-magenta-soft { text-shadow: var(--heading-pink-glow); }
 @utility glow-red { text-shadow: 0 0 10px oklch(0.65 0.25 20 / 0.9); }

@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Plus, Minus, RotateCcw, X } from "lucide-react";
 import { useLive } from "@/components/LiveProvider";
+import { PageBackdrop } from "@/components/PageBackdrop";
 import { formatTime, mapModel, nowOf, thresholdsOf, type MapNode, type SystemBox } from "@/lib/live/derive";
 
 export const Route = createFileRoute("/map")({
@@ -110,7 +111,9 @@ function MapPage() {
   const bpd = (v: number | undefined) => (v == null || !Number.isFinite(v) ? "—" : v.toFixed(0));
 
   return (
-    <main className="mx-auto max-w-7xl space-y-4 p-4 md:p-6">
+    <>
+    <PageBackdrop layers={[{ src: "/art/tracks.jpg", opacity: 0.16, position: "center", size: "cover" }]} />
+    <main className="relative z-10 mx-auto max-w-7xl space-y-4 p-4 md:p-6">
       <div className="flex flex-wrap items-end justify-between gap-2">
         <div>
           <h1 className="font-mono text-2xl font-bold tracking-[0.2em] text-heading-pink glow-magenta-soft">NETWORK MAP</h1>
@@ -235,5 +238,6 @@ function MapPage() {
         )}
       </div>
     </main>
+    </>
   );
 }
