@@ -7,7 +7,7 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { useLive, useLiveActions } from '@/components/LiveProvider';
 import { FleetPanel } from '@/components/FleetPanel';
 import {
-  dedupeOptions, effectiveNow, fleets as liveFleets, fleetTrucks, fmtCountdown, formatTime, inspectOption, nowOf, optionPlans,
+  dedupeOptions, effectiveNow, fixFor, fleets as liveFleets, fleetTrucks, fmtCountdown, formatTime, inspectOption, nowOf, optionPlans,
   pendingPriority, planToOption, priorityQueue, recommendations, tickSeconds, type DecisionPlan, type Fleet, type PriorityItem,
 } from '@/lib/live/derive';
 import type { LiveData } from '@/lib/live/store';
@@ -128,7 +128,7 @@ function DecisionModal({item,close}:{item:PriorityItem;close:()=>void}) {
             <RadioGroupItem id={`plan-${p.key}`} value={p.key}/>
           </span>
           {p.key==='inspect'
-            ?<span className="mt-2 block text-sm text-muted-foreground">Dispatch an inspector to the site</span>
+            ?<><span className="mt-2 block text-sm text-muted-foreground">Dispatch an inspector to the site</span><CostReasoning live={live} eventId={item.eventId} optionKey="inspect"/></>
             :<>
               <span className={`mt-3 block font-mono text-2xl ${isBest?'text-ok':''}`}>${Math.round(p.cost).toLocaleString()}</span>
               <span className="block text-xs text-muted-foreground">{p.truckingCost>0?`$${Math.round(p.revenueLoss).toLocaleString()} lost sales + $${Math.round(p.truckingCost).toLocaleString()} hauling`:'Lost sales'}</span>
@@ -136,10 +136,21 @@ function DecisionModal({item,close}:{item:PriorityItem;close:()=>void}) {
               {p.lines.length>1&&<span className="mt-2 block space-y-0.5 text-xs text-muted-foreground">{p.lines.map(l=><span key={l.facilityId} className="block">{l.facilityId}: {l.summary}</span>)}</span>}
               {item.scenario&&selected&&p.trucks>0&&p.latestDispatchUnix!==undefined&&<span className="mt-2 block rounded border border-accent/50 bg-accent/10 px-2 py-1.5 font-mono text-xs"><span className="block text-accent">Estimated dispatch: call trucks by {formatTime(p.latestDispatchUnix)}</span><span className="block text-muted-foreground">Latest call that still prevents the shutdown if this pump fails now{p.firstArrivalUnix!==undefined?` · if called now, first truck arrives ${formatTime(p.firstArrivalUnix)}`:''}</span></span>}
               {!p.valid&&<span className="mt-2 block text-xs text-destructive">{p.errors.join('; ')}</span>}
+              <CostReasoning live={live} eventId={item.eventId} optionKey={p.key} facility={item.facility} joint={p.lines.length>1}/>
             </>}
         </label>;})}
     </RadioGroup>}
     {error&&<p role="alert" className="text-sm text-destructive">{error}</p>}
     <div className="flex justify-end gap-2 border-t border-border pt-4"><Button variant="ghost" onClick={close}>Cancel</Button><Button disabled={!choice||busy||!plans.length} onClick={()=>void submit()}>{busy?'Saving…':'Submit'}</Button></div>
   </>;
+}
+
+/** Hadent's /fixes explanation of how this option's cost is worked out (stored in Spacetime by the worker). */
+function CostReasoning({live,eventId,optionKey,facility,joint}:{live:LiveData;eventId:string|undefined;optionKey:string;facility?:string;joint?:boolean}) {
+  const fix=fixFor(live,eventId,optionKey);
+  if(!fix?.costReasoning)return null;
+  return <span className="mt-2 block border-t border-border pt-2 text-xs">
+    <span className="block font-mono text-[10px] uppercase tracking-wider text-muted-foreground">{joint&&facility?`How ${facility}'s share is worked out`:'How the cost is worked out'}</span>
+    <span className="mt-1 block leading-relaxed text-muted-foreground">{fix.costReasoning}</span>
+  </span>;
 }

@@ -55,6 +55,7 @@ import LoadDatasetChunkReducer from "./load_dataset_chunk_reducer";
 import LoadDatasetEndReducer from "./load_dataset_end_reducer";
 import LoadDatasetFailReducer from "./load_dataset_fail_reducer";
 import MlPutEvidenceReducer from "./ml_put_evidence_reducer";
+import MlPutFixesReducer from "./ml_put_fixes_reducer";
 import MlPutProbsReducer from "./ml_put_probs_reducer";
 import MlSetStatusReducer from "./ml_set_status_reducer";
 import PauseReducer from "./pause_reducer";
@@ -91,6 +92,7 @@ import EventRow from "./event_table";
 import EventEvidenceRow from "./event_evidence_table";
 import FacilityRow from "./facility_table";
 import FacilityStateRow from "./facility_state_table";
+import FixOptionRow from "./fix_option_table";
 import FleetRecommendationRow from "./fleet_recommendation_table";
 import FleetSweepRow from "./fleet_sweep_table";
 import HandoffRow from "./handoff_table";
@@ -271,6 +273,23 @@ const tablesSchema = __schema({
       { name: 'facility_state_key_key', constraint: 'unique', columns: ['key'] },
     ],
   }, FacilityStateRow),
+  fixOption: __table({
+    name: 'fix_option',
+    indexes: [
+      { accessor: 'datasetId', name: 'fix_option_dataset_id_idx_btree', algorithm: 'btree', columns: [
+        'datasetId',
+      ] },
+      { accessor: 'eventId', name: 'fix_option_event_id_idx_btree', algorithm: 'btree', columns: [
+        'eventId',
+      ] },
+      { accessor: 'key', name: 'fix_option_key_idx_btree', algorithm: 'btree', columns: [
+        'key',
+      ] },
+    ],
+    constraints: [
+      { name: 'fix_option_key_key', constraint: 'unique', columns: ['key'] },
+    ],
+  }, FixOptionRow),
   fleetRecommendation: __table({
     name: 'fleet_recommendation',
     indexes: [
@@ -540,6 +559,7 @@ const reducersSchema = __reducers(
   __reducerSchema("load_dataset_end", LoadDatasetEndReducer),
   __reducerSchema("load_dataset_fail", LoadDatasetFailReducer),
   __reducerSchema("ml_put_evidence", MlPutEvidenceReducer),
+  __reducerSchema("ml_put_fixes", MlPutFixesReducer),
   __reducerSchema("ml_put_probs", MlPutProbsReducer),
   __reducerSchema("ml_set_status", MlSetStatusReducer),
   __reducerSchema("pause", PauseReducer),

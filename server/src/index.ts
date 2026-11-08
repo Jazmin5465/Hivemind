@@ -2,7 +2,7 @@
 // all detection / countdown / planning logic is pure TS in ../../core.
 import { SenderError, t } from 'spacetimedb/server';
 import { ScheduleAt } from 'spacetimedb';
-import spacetimedb, { ActionInput, clockTimer, Driver, PlanOverrides, SeriesChunk } from './schema';
+import spacetimedb, { ActionInput, clockTimer, Driver, FixInput, PlanOverrides, SeriesChunk } from './schema';
 import {
   committedPlans,
   deleteDatasetRows,
@@ -673,6 +673,17 @@ export const mlSetStatus = spacetimedb.reducer(
     if (!a.ok) for (const r of [...ctx.db.series.datasetId.filter(a.datasetId)]) if (r.metric.startsWith('ml_')) ctx.db.series.id.delete(r.id);
     dropCache(a.datasetId);
     recompute(ctx, a.datasetId);
+  },
+);
+
+/** Costed fixes from the sidecar's /fixes/all at `asOfUnix` (replaces this dataset's earlier fixes). */
+export const mlPutFixes = spacetimedb.reducer(
+  { datasetId: t.string(), asOfUnix: t.u32(), fixes: t.array(FixInput) },
+  (ctx, { datasetId, asOfUnix, fixes }) => {
+    requireAdmin(ctx);
+    requireDataset(ctx, datasetId);
+    for (const r of [...ctx.db.fixOption.datasetId.filter(datasetId)]) ctx.db.fixOption.key.delete(r.key);
+    for (const f of fixes) ctx.db.fixOption.insert({ key: `${f.eventId}/${f.rank}`, datasetId, ...f, asOfUnix });
   },
 );
 

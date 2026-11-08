@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  decisionNodes, dedupeOptions, effectiveNow, fleetTrucks, historyNodes, mapModel, optionPlans, pendingPriority, planToOption, priorityQueue,
+  decisionNodes, dedupeOptions, effectiveNow, fixFor, fleetTrucks, historyNodes, mapModel, optionPlans, pendingPriority, planToOption, priorityQueue,
   recommendations, sortHistory, tickSeconds, watchItems,
 } from '@/lib/live/derive';
 import { action, decision, event, facility, identity, liveData, NOW, plan, planFacility, state, system, ts } from './live-fixtures';
@@ -90,6 +90,20 @@ describe('decision popup options (backend plans)', () => {
     expect(opt).toMatchObject({ label: 'Send trucks', cost: 905, truckingCost: 905, trips: 1, shutdownHours: null, latestDispatchUnix: NOW + 193 * 60, firstArrivalUnix: NOW + 75 * 60 });
     expect(shut).toMatchObject({ label: 'Shut in selected wells', cost: 1958, wellIds: ['S1_WELL_A2'], latestDispatchUnix: undefined });
     expect(nothing).toMatchObject({ label: 'Do nothing', cost: 5000, revenueLoss: 5000, shutdownHours: 1 });
+  });
+});
+
+describe('cost reasoning from the ML sidecar /fixes', () => {
+  const fix = (eventId: string, rank: number, optionKey: string, costReasoning: string) => ({ key: eventId + '/' + rank, datasetId: 'fixture', eventId, facilityId: 'A', rank, optionKey, description: '', predictedSequence: [], cost: 905, costReasoning, asOfUnix: NOW }) as never;
+  const live = liveData({ fixes: [fix('e1', 1, 'optimal', '1 truck x 1 trip x $905 = $905. Total: $905.'), fix('e1', 2, 'do_nothing', 'Automatic shut-in ... Total: $5,016.'), fix('e2', 1, 'none_needed', 'No action needed')] });
+  it('matches the fix for an event and option', () => {
+    expect(fixFor(live, 'e1', 'optimal')?.costReasoning).toMatch(/Total: \$905/);
+    expect(fixFor(live, 'e1', 'do_nothing')?.costReasoning).toMatch(/5,016/);
+    expect(fixFor(live, 'e1', 'trucks_only')).toBeUndefined();
+    expect(fixFor(live, undefined, 'optimal')).toBeUndefined();
+  });
+  it('a tank that needs no action explains it on the recommended option', () => {
+    expect(fixFor(live, 'e2', 'optimal')?.costReasoning).toBe('No action needed');
   });
 });
 

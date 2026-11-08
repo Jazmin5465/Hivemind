@@ -28,6 +28,18 @@ export const Driver = t.object('Driver', {
   contribution: t.f64(),
 });
 
+/** one costed fix from the ML sidecar's /fixes (docs/API_REFERENCE.md), matched to a backend event */
+export const FixInput = t.object('FixInput', {
+  eventId: t.string(),
+  facilityId: t.string(),
+  rank: t.u32(),
+  optionKey: t.string(),
+  description: t.string(),
+  predictedSequence: t.array(t.string()),
+  cost: t.f64(),
+  costReasoning: t.string(),
+});
+
 export const ActionInput = t.object('ActionInput', {
   eventId: t.string(),
   facilityId: t.string(),
@@ -559,6 +571,26 @@ const mlStatus = table(
   },
 );
 
+/** Costed fixes per ongoing event from Hadent's /fixes (cost reasoning + predicted sequence), at the clock. */
+const fixOption = table(
+  { name: 'fix_option', public: true },
+  {
+    key: t.string().primaryKey(), // `${eventId}/${rank}`
+    datasetId: t.string().index('btree'),
+    eventId: t.string().index('btree'), // backend event id
+    facilityId: t.string(),
+    rank: t.u32(), // 1 = the sidecar's recommended fix
+    /** optimal | trucks_only | shut_in_only | do_nothing | none_needed | wait | inspect | monitor */
+    optionKey: t.string(),
+    description: t.string(),
+    predictedSequence: t.array(t.string()),
+    /** this facility's share in $ (0 for leaks / worn pumps = unpriced, not free) */
+    cost: t.f64(),
+    costReasoning: t.string(),
+    asOfUnix: t.u32(),
+  },
+);
+
 /** Fleet advice at the clock: 'temporary' truck borrowing and the 'long_term' move (from fleet_sweep). */
 const fleetRecommendation = table(
   { name: 'fleet_recommendation', public: true },
@@ -642,6 +674,7 @@ const spacetimedb = schema({
   mlStatus,
   fleetSweep,
   fleetRecommendation,
+  fixOption,
   admin,
   workerKey,
 });

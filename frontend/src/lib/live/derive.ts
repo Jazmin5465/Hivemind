@@ -183,6 +183,17 @@ export function planToOption(live: LiveData, p: Plan): DecisionPlan {
   };
 }
 
+/**
+ * The ML sidecar's costed fix for this event and option (its cost reasoning explains this
+ * facility's share). Options are matched by the sidecar's labels: Recommended -> optimal,
+ * Trucks only, Shut in wells only, Do nothing; inspect for leaks and worn pumps.
+ */
+export function fixFor(live: LiveData, eventId: string | undefined, key: string) {
+  if (!eventId) return undefined;
+  const rows = live.fixes.filter((f) => f.eventId === eventId);
+  return rows.find((f) => f.optionKey === key) ?? (key === 'optimal' ? rows.find((f) => f.optionKey === 'none_needed' || f.optionKey === 'wait') : undefined);
+}
+
 /** drop options identical to an earlier one (e.g. the optimal plan IS the trucks-only plan) */
 export function dedupeOptions(options: DecisionPlan[]): DecisionPlan[] {
   const seen = new Set<string>();

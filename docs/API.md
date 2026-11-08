@@ -175,6 +175,9 @@ Approving a joint plan writes one row per failure it covers. Rejecting an approv
 **`fleet_recommendation`** (PK `key`): fleet advice at the clock, computed by the backend.
 `kind` (`temporary` = a system with every truck out borrows one from the nearest system with ≥ 2 on standby; `long_term` = move one truck permanently, from `fleet_sweep`), `fromSystem`, `toSystem`, `km` (between the truck yards), `reason`, `savings` (long term: $ saved by the receiving system), `asOfUnix`.
 
+**`fix_option`** (PK `key`): costed fixes per ongoing event from Hadent's ML sidecar `/fixes/all` (see `docs/API_REFERENCE.md`), stored by the worker at the backend clock.
+`eventId` (backend event id), `facilityId`, `rank` (1 = the sidecar's recommended fix), `optionKey` (`optimal` \| `trucks_only` \| `shut_in_only` \| `do_nothing` \| `none_needed` \| `wait` \| `inspect` \| `monitor`), `description`, `predictedSequence: string[]` (timeline of what happens next), `cost` (this facility's share in $; 0 for leaks and worn pumps = unpriced, not free), `costReasoning` (the formula with its inputs), `asOfUnix`. The decision popup shows `costReasoning` under the matching option.
+
 ### Multiplayer
 
 **`operator`** (PK `identity`): `name`, `role` (`operator` | `agent`), `online`, `connections`, `lastSeen`. Use it for presence.
@@ -236,6 +239,7 @@ Worker-only reducers (`loadDataset*`, `ml*`, `agent*`, `registerWorker`, `setWor
 - **Demo:** `injectFailure(ds, 'S1_FACILITY_A')` creates a new ongoing failure with a countdown and a plan within one transaction.
 
 ## Changelog
+- v1.4 (2026-11-08 05:00): + `fix_option` table (ML sidecar /fixes cost reasoning, written by the worker via `mlPutFixes`).
 - v1.3 (2026-11-08 04:30): + `sim_clock.nowSetAtMicros`, `facility_state.watchHours` / `watchRank`, `plan_facility.latestDispatchUnix`, `fleet_recommendation` table (proactive watch and fleet advice moved from the browser into the backend).
 - v1.2 (2026-11-08 03:00): + `decision` table, `plan.optionKey` / `plan.scenarioFacilityId`, `requestPlanOptions`, `selectContingency`, `sendInspector`, `revokeDecision`; `approvePlan` logs decisions; the fleet sweep runs automatically on load. Bindings now in `frontend/src/module_bindings`.
 - v1.1 (2026-11-07 23:30): + `fleet_sweep` table, `runFleetSweep`, `injectSystemOutage`.

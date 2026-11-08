@@ -236,6 +236,33 @@ export const FacilityState = __t.object("FacilityState", {
 });
 export type FacilityState = __Infer<typeof FacilityState>;
 
+export const FixInput = __t.object("FixInput", {
+  eventId: __t.string(),
+  facilityId: __t.string(),
+  rank: __t.u32(),
+  optionKey: __t.string(),
+  description: __t.string(),
+  predictedSequence: __t.array(__t.string()),
+  cost: __t.f64(),
+  costReasoning: __t.string(),
+});
+export type FixInput = __Infer<typeof FixInput>;
+
+export const FixOption = __t.object("FixOption", {
+  key: __t.string(),
+  datasetId: __t.string(),
+  eventId: __t.string(),
+  facilityId: __t.string(),
+  rank: __t.u32(),
+  optionKey: __t.string(),
+  description: __t.string(),
+  predictedSequence: __t.array(__t.string()),
+  cost: __t.f64(),
+  costReasoning: __t.string(),
+  asOfUnix: __t.u32(),
+});
+export type FixOption = __Infer<typeof FixOption>;
+
 export const FleetRecommendation = __t.object("FleetRecommendation", {
   key: __t.string(),
   datasetId: __t.string(),

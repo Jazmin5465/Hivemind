@@ -421,6 +421,7 @@ export function deleteDatasetRows(ctx: Ctx, datasetId: string, keepClockAndColla
   delAll(ctx.db.injectedFailure.datasetId.filter(datasetId), (r) => ctx.db.injectedFailure.id.delete(r.id));
   delAll(ctx.db.fleetSweep.datasetId.filter(datasetId), (r) => ctx.db.fleetSweep.key.delete(r.key));
   delAll(ctx.db.fleetRecommendation.datasetId.filter(datasetId), (r) => ctx.db.fleetRecommendation.key.delete(r.key));
+  delAll(ctx.db.fixOption.datasetId.filter(datasetId), (r) => ctx.db.fixOption.key.delete(r.key));
   ctx.db.opsConfig.datasetId.delete(datasetId);
   ctx.db.datasetRaw.datasetId.delete(datasetId);
   ctx.db.mlStatus.datasetId.delete(datasetId);

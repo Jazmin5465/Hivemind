@@ -60,6 +60,74 @@ export const mlDetect = (datasetDir: string, asOfUnix?: number) =>
 export const mlExplain = (datasetDir: string, assetId: string, category: string, onsetUnix: number, asOfUnix: number) =>
   post<{ drivers: Driver[] }>('/explain', { datasetDir, assetId, category, onsetUnix, asOfUnix }, 15_000);
 
+// ---------- /fixes (docs/API_REFERENCE.md §5-6) ----------
+export interface SidecarFix {
+  fixDescription: string;
+  predictedSequence: string[];
+  cost: number;
+  costReasoning: string;
+}
+export interface FixesAllResponse {
+  asOfUnix: number;
+  events: { eventId: string; category: string; assetId: string; facilityId: string; systemId: string; onsetUnix: number; confidence: number }[];
+  results: { eventId: string; fixes: SidecarFix[] }[];
+}
+
+export const mlFixesAll = (datasetDir: string, asOfUnix: number) => post<FixesAllResponse>('/fixes/all', { datasetDir, asOfUnix }, 30_000);
+
+/** The sidecar labels each fix by how its description starts; map that to the console's option keys. */
+export function fixOptionKey(description: string): string {
+  const d = description.trim();
+  if (/^Recommended/i.test(d)) return 'optimal';
+  if (/^Trucks only:/i.test(d)) return 'trucks_only';
+  if (/^Shut in wells only:/i.test(d)) return 'shut_in_only';
+  if (/^Do nothing/i.test(d)) return 'do_nothing';
+  if (/^No action needed/i.test(d)) return 'none_needed';
+  if (/^Send an inspector/i.test(d)) return 'inspect';
+  if (/^No action yet: monitor/i.test(d)) return 'monitor';
+  if (/wait/i.test(d)) return 'wait';
+  return 'other';
+}
+
+export interface FixRow {
+  eventId: string;
+  facilityId: string;
+  rank: number;
+  optionKey: string;
+  description: string;
+  predictedSequence: string[];
+  cost: number;
+  costReasoning: string;
+}
+
+/**
+ * Match the sidecar's events (`category:assetId:onsetUnix`) to the backend's ongoing events
+ * (`${datasetId}:category:assetId:onsetUnix`): exact id first, else same category and asset.
+ */
+export function fixesToRows(resp: FixesAllResponse, datasetId: string, backend: { eventId: string; category: string; assetId: string; status: string }[]): FixRow[] {
+  const ongoing = backend.filter((e) => e.status === 'ongoing');
+  const rows: FixRow[] = [];
+  for (const r of resp.results) {
+    const ev = resp.events.find((e) => e.eventId === r.eventId);
+    const exact = ongoing.find((e) => e.eventId === `${datasetId}:${r.eventId}`);
+    const match = exact ?? (ev ? ongoing.find((e) => e.category === ev.category && e.assetId === ev.assetId) : undefined);
+    if (!match) continue;
+    r.fixes.forEach((f, i) =>
+      rows.push({
+        eventId: match.eventId,
+        facilityId: ev?.facilityId ?? '',
+        rank: i + 1,
+        optionKey: fixOptionKey(f.fixDescription),
+        description: f.fixDescription,
+        predictedSequence: f.predictedSequence ?? [],
+        cost: Number.isFinite(f.cost) ? f.cost : 0,
+        costReasoning: f.costReasoning ?? '',
+      }),
+    );
+  }
+  return rows;
+}
+
 const METRIC_FOR: Record<string, string> = {
   'pump:failure': ML_METRICS.failure,
   'pump:degradation': ML_METRICS.degradation,
