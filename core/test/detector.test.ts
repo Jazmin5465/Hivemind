@@ -78,7 +78,15 @@ const T0 = 1_791_158_400; // 2026-10-05T00:00Z
 const STEP = 300;
 const HOUR = 12; // steps per hour
 
-function simulate(model: ReturnType<typeof makeModel>, n: number, faults: Record<string, Faults>, seed = 1): Grid {
+/** Physics knobs: SPEC calls the +50/+150 pressure offsets placeholders, so test others too. */
+interface Phys {
+  pipeOff: number;
+  disOff: number;
+  pNoise: number;
+}
+const DOC_PHYS: Phys = { pipeOff: 50, disOff: 150, pNoise: 3 };
+
+function simulate(model: ReturnType<typeof makeModel>, n: number, faults: Record<string, Faults>, seed = 1, phys: Phys = DOC_PHYS): Grid {
   const g = rng(seed);
   const series = new Map<string, Float64Array>();
   const arr = (a: string, m: string) => {
@@ -114,9 +122,9 @@ function simulate(model: ReturnType<typeof makeModel>, n: number, faults: Record
       const leaking = pumping && inRange(fl.leak, i);
       st[i] = fault ? 2 : pumping ? 1 : 0;
       flow[i] = out;
-      dis[i] = disp + (pumping ? 150 - 400 * wear : 0) + 3 * g();
+      dis[i] = disp + (pumping ? phys.disOff - 400 * wear : 0) + phys.pNoise * g();
       recv[i] = pumping ? out * (1 - (leaking ? (fl.leakLoss ?? 0.025) : 0)) * (1 + 0.006 * g()) : 0;
-      pp[i] = disp + (pumping ? 50 - (leaking ? (fl.leakDropPsi ?? 18) : 0) : 0) + 3 * g();
+      pp[i] = disp + (pumping ? phys.pipeOff - (leaking ? (fl.leakDropPsi ?? 18) : 0) : 0) + phys.pNoise * g();
       inflow[i] = q;
       lvl[i] = level;
       level = Math.min(model.shutdownPct, Math.max(0, level + ((q - out) / 24 / f.capacityBbl) * 100 / HOUR));
@@ -146,6 +154,20 @@ describe('detectRules on synthetic data', () => {
       const model = makeModel('Q1', disp, facs);
       const grid = simulate(model, N, {}, seed);
       expect(detectRules(model, grid)).toEqual([]);
+    }
+  });
+
+  it('self-calibrates when pressure offsets / noise differ from the documented placeholders', () => {
+    for (const phys of [
+      { pipeOff: 35, disOff: 110, pNoise: 3 },
+      { pipeOff: 80, disOff: 240, pNoise: 6 },
+    ]) {
+      const model = makeModel('Q1', 1300, facs);
+      expect(detectRules(model, simulate(model, N, {}, 5, phys))).toEqual([]);
+      const leak: [number, number] = [400, 400 + 12 * HOUR];
+      const grid = simulate(model, N, { Q1_D: { leak, leakDropPsi: phys.pipeOff * 0.35 } }, 6, phys);
+      const evs = detectRules(model, grid);
+      expect(evs.map((e) => `${e.category}:${e.assetId}`)).toEqual(['pipeline_leak:Q1_D_L']);
     }
   });
 

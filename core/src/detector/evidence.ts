@@ -1,13 +1,10 @@
 // Plain-English evidence strings, computed from the readings (never canned numbers).
 import type { Facility } from '../model';
 import { tsAt, type Grid } from '../telemetry';
+import type { Calibration } from './calibrate';
 import {
-  DISCHARGE_NOISE_PSI,
-  DISCHARGE_RUN_OFFSET_PSI,
   EVIDENCE_WINDOW_STEPS,
   FLOW_NOISE,
-  PIPE_P_NOISE_PSI,
-  PIPE_RUN_OFFSET_PSI,
   PUMP_FAULT,
   PUMP_RUNNING,
   RECV_NOISE,
@@ -15,6 +12,7 @@ import {
 
 export interface FacilitySeries {
   fac: Facility;
+  cal: Calibration;
   disposalPsi: number;
   status: Float64Array;
   flow: Float64Array;
@@ -106,7 +104,7 @@ export function describeFailure(s: FacilitySeries, grid: Grid, onset: number, en
 export function describeLeak(s: FacilitySeries, grid: Grid, onset: number, ref: number): { evidence: string[]; score: number } {
   const idx = lastRunningSteps(s, onset, ref, 2 * EVIDENCE_WINDOW_STEPS);
   const ratio = meanOver(idx, (i) => s.recv[i] / s.flow[i]);
-  const expected = s.disposalPsi + PIPE_RUN_OFFSET_PSI;
+  const expected = s.disposalPsi + s.cal.pipeOffset[ref];
   const pDef = meanOver(idx, (i) => expected - s.pipeP[i]);
   const flowFrac = meanOver(idx, (i) => s.flow[i] / s.fac.maxFlowBpd);
   const span = fmtDuration(idx.length, grid.stepSec);
@@ -115,7 +113,7 @@ export function describeLeak(s: FacilitySeries, grid: Grid, onset: number, ref: 
   ev.push(`Water reaching the disposal site is ${pct(ratio)} of what the pump sends (last ${span} of pumping)`);
   ev.push(`Pipeline pressure ${psi(pDef)} below normal while pumping (${fmtInt(expected - pDef)} vs ${fmtInt(expected)} psi expected)`);
   ev.push(`Pump output is normal (${pct(flowFrac)} of rated), so water is being lost between pump and disposal`);
-  const score = ((1 - ratio) / RECV_NOISE + pDef / PIPE_P_NOISE_PSI) / Math.SQRT2;
+  const score = ((1 - ratio) / RECV_NOISE + pDef / s.cal.pressureNoise[ref]) / Math.SQRT2;
   return { evidence: ev, score };
 }
 
@@ -123,7 +121,7 @@ export function describeDegradation(s: FacilitySeries, grid: Grid, onset: number
   const idx = lastRunningSteps(s, onset, ref, EVIDENCE_WINDOW_STEPS);
   if (idx.length === 0) return { evidence: ['Pump output below rated flow while pumping'], score: 0 };
   const flowFrac = meanOver(idx, (i) => s.flow[i] / s.fac.maxFlowBpd);
-  const expected = s.disposalPsi + DISCHARGE_RUN_OFFSET_PSI;
+  const expected = s.disposalPsi + s.cal.dischargeOffset[ref];
   const dDef = meanOver(idx, (i) => expected - s.discharge[i]);
   const span = fmtDuration(idx.length, grid.stepSec);
   const ev: string[] = [];
@@ -139,6 +137,6 @@ export function describeDegradation(s: FacilitySeries, grid: Grid, onset: number
   } else {
     ev.push('No fault reported and the pipeline receives what the pump sends, so the pump itself is weakening');
   }
-  const score = ((1 - flowFrac) / FLOW_NOISE + dDef / DISCHARGE_NOISE_PSI) / Math.SQRT2;
+  const score = ((1 - flowFrac) / FLOW_NOISE + dDef / s.cal.pressureNoise[ref]) / Math.SQRT2;
   return { evidence: ev, score };
 }

@@ -7,22 +7,19 @@ export const PUMP_STOPPED = 0;
 export const PUMP_RUNNING = 1;
 export const PUMP_FAULT = 2;
 
-/** SPEC "Pressure formulas": healthy pipeline pressure = disposal + 50 psi while pumping. */
+/** SPEC "Pressure formulas": healthy pipeline pressure = disposal + 50 psi while pumping.
+ *  Used as the prior; calibrate.ts refines it from the data (SPEC calls offsets placeholders). */
 export const PIPE_RUN_OFFSET_PSI = 50;
 /** SPEC "Pressure formulas": healthy discharge pressure = disposal + 150 psi while pumping. */
 export const DISCHARGE_RUN_OFFSET_PSI = 150;
 
 // Sensor noise (1 standard deviation per 5-minute reading). Measured on healthy readings:
-// relative flow noise ~0.6% of rated flow, receive/pump ratio ~0.8% (two noisy flows),
-// pressures ~3 psi. Expressed as ratios / fractions of the documented offsets so they scale.
+// relative flow noise ~0.6% of rated flow, receive/pump ratio ~0.8% (two noisy flows).
+// Pressure noise (~3 psi) is estimated from the data in calibrate.ts.
 /** flow_bpd / max_flow_bpd noise */
 export const FLOW_NOISE = 0.006;
 /** receive_flow_bpd / flow_bpd noise */
 export const RECV_NOISE = 0.0085;
-/** pipeline pressure noise, as 6% of the documented pipeline run offset (~3 psi) */
-export const PIPE_P_NOISE_PSI = 0.06 * PIPE_RUN_OFFSET_PSI;
-/** discharge pressure noise, as 2% of the documented discharge run offset (~3 psi) */
-export const DISCHARGE_NOISE_PSI = 0.02 * DISCHARGE_RUN_OFFSET_PSI;
 
 /** Evidence strings summarise the last hour of pumping (12 running 5-minute steps). */
 export const EVIDENCE_WINDOW_STEPS = 12;

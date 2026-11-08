@@ -21,16 +21,13 @@ import type { DetectedEvent, EventCategory } from '../types';
 import {
   DEG,
   LEAK,
-  PIPE_RUN_OFFSET_PSI,
-  DISCHARGE_RUN_OFFSET_PSI,
   PUMP_FAULT,
   PUMP_RUNNING,
   RECV_NOISE,
   FLOW_NOISE,
-  PIPE_P_NOISE_PSI,
-  DISCHARGE_NOISE_PSI,
   EVIDENCE_WINDOW_STEPS,
 } from './constants';
+import { calibrate, type Calibration } from './calibrate';
 import { Cusum } from './cusum';
 import { describeDegradation, describeFailure, describeLeak, type FacilitySeries } from './evidence';
 
@@ -58,8 +55,9 @@ export function detectRules(model: DatasetModel, grid: Grid, opts: RulesOptions 
   const last = idxAtOrBefore(grid, asOf);
   if (last < 0) return [];
   const out: DetectedEvent[] = [];
+  const cal = calibrate(model, grid, last);
   for (const fac of model.facilities) {
-    const s = loadSeries(model, grid, fac);
+    const s = loadSeries(model, grid, fac, cal);
     if (!s) continue;
     const raws = scanFacility(s, last);
     for (const r of raws) out.push(toEvent(r, s, grid, last));
@@ -68,7 +66,7 @@ export function detectRules(model: DatasetModel, grid: Grid, opts: RulesOptions 
   return out;
 }
 
-function loadSeries(model: DatasetModel, grid: Grid, fac: Facility): FacilitySeries | null {
+function loadSeries(model: DatasetModel, grid: Grid, fac: Facility, cal: Calibration): FacilitySeries | null {
   const sys = model.systemById.get(fac.systemId);
   const status = gridGet(grid, fac.pumpId, 'status');
   const flow = gridGet(grid, fac.pumpId, 'flow_bpd');
@@ -79,6 +77,7 @@ function loadSeries(model: DatasetModel, grid: Grid, fac: Facility): FacilitySer
   const nan = new Float64Array(grid.n).fill(NaN);
   return {
     fac,
+    cal,
     disposalPsi: sys.disposalPressurePsi,
     status,
     flow: flow ?? nan,
@@ -92,16 +91,18 @@ function loadSeries(model: DatasetModel, grid: Grid, fac: Facility): FacilitySer
 
 /** Per-step leak z-score (positive = leak-like), or NaN if not computable. */
 export function leakZ(s: FacilitySeries, i: number): { zP: number; zR: number } {
+  if (!s.cal.ready[i]) return { zP: NaN, zR: NaN }; // still calibrating pressure offsets
   const f = s.flow[i];
   const zR = f > 0 ? (1 - s.recv[i] / f) / RECV_NOISE : NaN;
-  const zP = (s.disposalPsi + PIPE_RUN_OFFSET_PSI - s.pipeP[i]) / PIPE_P_NOISE_PSI;
+  const zP = (s.disposalPsi + s.cal.pipeOffset[i] - s.pipeP[i]) / s.cal.pressureNoise[i];
   return { zP, zR };
 }
 
 /** Per-step degradation z-score (positive = worn-pump-like), or NaN if not computable. */
 export function degZ(s: FacilitySeries, i: number): { zF: number; zD: number } {
+  if (!s.cal.ready[i]) return { zF: NaN, zD: NaN }; // still calibrating pressure offsets
   const zF = (1 - s.flow[i] / s.fac.maxFlowBpd) / FLOW_NOISE;
-  const zD = (s.disposalPsi + DISCHARGE_RUN_OFFSET_PSI - s.discharge[i]) / DISCHARGE_NOISE_PSI;
+  const zD = (s.disposalPsi + s.cal.dischargeOffset[i] - s.discharge[i]) / s.cal.pressureNoise[i];
   return { zF, zD };
 }
 
