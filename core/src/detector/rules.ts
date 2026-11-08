@@ -15,6 +15,8 @@
 //  pump_degradation  while pumping: flow below max_flow_bpd AND discharge pressure below
 //                    disposal + run offset. Slow drift, so a low-reference CUSUM; ends at
 //                    recovery or where a pump_failure starts.
+// Pressure offsets and noise are calibrated causally from peer pumps (calibrate.ts); flows
+// are normalised by each pump's max_flow_bpd and by the pump's own output.
 import type { DatasetModel, Facility } from '../model';
 import { gridGet, idxAtOrBefore, tsAt, type Grid } from '../telemetry';
 import type { DetectedEvent, EventCategory } from '../types';
@@ -25,7 +27,6 @@ import {
   PUMP_RUNNING,
   RECV_NOISE,
   FLOW_NOISE,
-  EVIDENCE_WINDOW_STEPS,
 } from './constants';
 import { calibrate, type Calibration } from './calibrate';
 import { Cusum } from './cusum';
@@ -163,7 +164,7 @@ function scanFacility(s: FacilitySeries, last: number): RawEvent[] {
     if (Number.isFinite(zP) && Number.isFinite(zR)) {
       // Combined evidence; each term is clipped so one wild reading can't carry an alarm alone.
       const z = (clip(zP, LEAK.Z_CLIP) + clip(zR, LEAK.Z_CLIP)) / Math.SQRT2;
-      leakWin.push(i, zP, zR);
+      leakWin.push(zP, zR);
       if (!leak) {
         leakUp.update(z, i);
         if (leakUp.s >= LEAK.H && leakWin.meanA() >= LEAK.MIN_MEAN_Z_EACH && leakWin.meanB() >= LEAK.MIN_MEAN_Z_EACH) {
@@ -196,7 +197,7 @@ function scanFacility(s: FacilitySeries, last: number): RawEvent[] {
     const { zF, zD } = degZ(s, i);
     if (Number.isFinite(zF) && Number.isFinite(zD)) {
       const z = (clip(zF, DEG.Z_CLIP) + clip(zD, DEG.Z_CLIP)) / Math.SQRT2;
-      degWin.push(i, zF, zD);
+      degWin.push(zF, zD);
       if (!deg) {
         // A small noise excursion shouldn't be carried across a pump-off gap: re-arm.
         if (!prevRunning && degUp.s < DEG.CARRY_MIN) degUp.reset();
@@ -273,7 +274,7 @@ export class RunningWindow {
   private a: number[] = [];
   private b: number[] = [];
   constructor(private readonly size: number) {}
-  push(_i: number, za: number, zb: number) {
+  push(za: number, zb: number) {
     this.a.push(za);
     this.b.push(zb);
     if (this.a.length > this.size) {
@@ -349,6 +350,3 @@ function toEvent(r: RawEvent, s: FacilitySeries, grid: Grid, last: number): Dete
     evidence,
   };
 }
-
-// Re-exported for tests / evaluation scripts.
-export { EVIDENCE_WINDOW_STEPS };

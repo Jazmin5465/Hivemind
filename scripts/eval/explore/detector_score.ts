@@ -62,14 +62,17 @@ for (const name of readdirSync(root).sort()) {
     } else {
       // latency: earliest asOf (5-min steps) at which an overlapping event is reported
       let lat = NaN;
+      let conf0 = NaN;
       for (let t = Math.max(grid.t0, l.onset_unix); t <= asOf; t += grid.stepSec) {
-        if (detectRules(model, grid, { asOfUnix: t }).some((x) => overlaps(x, l, t))) {
+        const first = detectRules(model, grid, { asOfUnix: t }).find((x) => overlaps(x, l, t));
+        if (first) {
           lat = t - l.onset_unix;
+          conf0 = first.confidence;
           break;
         }
       }
       const statusOk = d.status === l.status ? '' : ` STATUS(${d.status})`;
-      line += `  HIT onsetErr=${hrs(d.onsetUnix - l.onset_unix)} endErr=${d.endUnix != null && l.end_unix != null ? hrs(d.endUnix - l.end_unix) : iso(d.endUnix)} latency=${hrs(lat)} conf=${d.confidence}${statusOk}`;
+      line += `  HIT onsetErr=${hrs(d.onsetUnix - l.onset_unix)} endErr=${d.endUnix != null && l.end_unix != null ? hrs(d.endUnix - l.end_unix) : iso(d.endUnix)} latency=${hrs(lat)} conf@detect=${conf0} conf=${d.confidence}${statusOk}`;
       if (m.length > 1) line += ` SPLIT x${m.length}`;
       if (statusOk) totalMiss += l.status === 'ongoing' ? 1 : 0;
     }
