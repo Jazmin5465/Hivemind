@@ -69,7 +69,10 @@ def _prepare(dataset_dir, as_of, use_cache=True):
 
 def _prepare_uncached(key):
     path, _, as_of = key
-    ds = load(path, as_of=as_of)
+    try:
+        ds = load(path, as_of=as_of)
+    except ValueError as e:              # e.g. asOfUnix before the first reading
+        raise DatasetError(str(e)) from e
     F = build_features(ds.wide, ds.network)
     X = F[store().features]
     P = store().booster.predict(X, num_iteration=store().meta["bestIteration"])

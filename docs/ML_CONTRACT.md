@@ -9,6 +9,8 @@ pip install -r ml/requirements.txt
 python ml/serve.py            # listens on 0.0.0.0:8001
 ```
 
+Field-by-field reference with real examples for every endpoint: [API_REFERENCE.md](API_REFERENCE.md). How to test: [API_TESTING.md](API_TESTING.md).
+
 ## Rules (all endpoints)
 
 1. **Causal.** Every output at time t uses only telemetry with `ts_unix <= t`. This includes smoothing and any change-point or Kalman layer. Test: run once on the full data and once with `asOfUnix = T`; all outputs at times <= T must be identical (max difference 0.0).

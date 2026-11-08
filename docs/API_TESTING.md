@@ -1,6 +1,6 @@
 # Testing the ML sidecar API
 
-The sidecar is a FastAPI service in `ml/serve.py` on `http://127.0.0.1:8001`. Full request and response shapes are in [ML_CONTRACT.md](ML_CONTRACT.md).
+The sidecar is a FastAPI service in `ml/serve.py` on `http://127.0.0.1:8001`. Every field of every request and response, with real examples, is in [API_REFERENCE.md](API_REFERENCE.md). The backend contract is [ML_CONTRACT.md](ML_CONTRACT.md).
 
 | Endpoint | What it does |
 |---|---|
