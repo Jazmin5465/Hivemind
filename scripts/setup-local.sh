@@ -12,7 +12,7 @@ DB="${SPACETIME_DB:-hivemind}"
 [ -f .env ] || cp .env.example .env
 if ! grep -q '^WORKER_KEY=.\+' .env; then
   KEY="$(openssl rand -hex 24)"
-  if grep -q '^WORKER_KEY=' .env; then sed -i '' "s/^WORKER_KEY=.*/WORKER_KEY=$KEY/" .env; else echo "WORKER_KEY=$KEY" >> .env; fi
+  if grep -q '^WORKER_KEY=' .env; then sed -i.bak "s/^WORKER_KEY=.*/WORKER_KEY=$KEY/" .env && rm -f .env.bak; else echo "WORKER_KEY=$KEY" >> .env; fi
   echo "generated WORKER_KEY in .env"
 fi
 KEY="$(grep '^WORKER_KEY=' .env | cut -d= -f2-)"
