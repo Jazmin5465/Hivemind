@@ -10,6 +10,12 @@
   font-display: swap;
 }
 @font-face {
+  font-family: "Satoshi";
+  src: url("/fonts/satoshi-variable.woff2") format("woff2");
+  font-weight: 300 900;
+  font-display: swap;
+}
+@font-face {
   font-family: "Elevon";
   src: url("/fonts/elevon-trial-threeg.woff2") format("woff2");
   font-display: swap;
@@ -42,13 +48,12 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
-  --font-sans: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, monospace;
-  --font-pixel: "VT323", monospace;
-  /* headings: Hypik (letters only; digits/punctuation fall back to Space Grotesk) */
-  --font-heading: "Hypik", "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Satoshi", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Satoshi", ui-sans-serif, system-ui, sans-serif;
+  /* headings: Hypik (letters only; digits/punctuation fall back to Satoshi) */
+  --font-heading: "Hypik", "Satoshi", ui-sans-serif, system-ui, sans-serif;
   /* subheadings */
-  --font-subheading: "Elevon", "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
+  --font-subheading: "Elevon", "Satoshi", ui-sans-serif, system-ui, sans-serif;
 }
 
 :root {
@@ -161,6 +166,36 @@
 .animate-flicker { animation: flicker 5s infinite; }
 .animate-dash { animation: dash 1.6s linear infinite; }
 .animate-flash { animation: flash 1s step-end infinite; }
+
+/* Page-title glitch: hidden cyan/magenta copies (from data-text) flash in shifted slices for ~0.4 s every 7 s. */
+.glitch { position: relative; animation: glitch-jitter 7s steps(1) infinite; }
+.glitch::before, .glitch::after {
+  content: attr(data-text); position: absolute; inset: 0; opacity: 0; pointer-events: none; text-shadow: none;
+}
+.glitch::before { color: var(--primary); animation: glitch-a 7s steps(1) infinite; }
+.glitch::after { color: var(--accent); animation: glitch-b 7s steps(1) infinite; }
+@keyframes glitch-jitter { 0%, 90%, 96%, 100% { transform: none; } 91% { transform: translate(1px, 0) skewX(-4deg); } 93% { transform: translate(-1px, 0); } 95% { transform: translate(1px, 0) skewX(2deg); } }
+@keyframes glitch-a {
+  0%, 90%, 96%, 100% { opacity: 0; transform: none; clip-path: inset(0 0 100% 0); }
+  91% { opacity: .9; transform: translate(-4px, 0); clip-path: inset(8% 0 62% 0); }
+  92.5% { opacity: .9; transform: translate(3px, 0); clip-path: inset(58% 0 18% 0); }
+  94% { opacity: .9; transform: translate(-2px, 0); clip-path: inset(30% 0 46% 0); }
+}
+@keyframes glitch-b {
+  0%, 90%, 96%, 100% { opacity: 0; transform: none; clip-path: inset(0 0 100% 0); }
+  91.5% { opacity: .9; transform: translate(4px, 0); clip-path: inset(48% 0 30% 0); }
+  93% { opacity: .9; transform: translate(-3px, 0); clip-path: inset(14% 0 66% 0); }
+  95% { opacity: .9; transform: translate(2px, 0); clip-path: inset(70% 0 6% 0); }
+}
+
+/* Logo glitch: the three bands of the hexagon jump apart briefly every 5 s. */
+.logo-glitch-top, .logo-glitch-mid, .logo-glitch-bot { animation: 5s steps(1) infinite; }
+.logo-glitch-top { animation-name: logo-glitch-top; }
+.logo-glitch-mid { transform: translateX(-7px); animation-name: logo-glitch-mid; }
+.logo-glitch-bot { animation-name: logo-glitch-bot; }
+@keyframes logo-glitch-top { 0%, 88%, 94%, 100% { transform: none; } 89% { transform: translateX(4px); } 91% { transform: translateX(-3px); } }
+@keyframes logo-glitch-mid { 0%, 88%, 94%, 100% { transform: translateX(-7px); } 89% { transform: translateX(9px); } 91% { transform: translateX(-12px); } 92.5% { transform: translateX(5px); } }
+@keyframes logo-glitch-bot { 0%, 88%, 94%, 100% { transform: none; } 90% { transform: translateX(-5px); } 92% { transform: translateX(3px); } }
 
 .google-sign-in {
   background: var(--google-background);

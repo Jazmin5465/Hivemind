@@ -2,7 +2,8 @@ import { Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { useLive } from "@/components/LiveProvider";
 import { formatTime, headerSummary } from "@/lib/live/derive";
-import { Menu, X, LayoutDashboard, Network, Clock, Hexagon } from "lucide-react";
+import { Menu, X, LayoutDashboard, Network, Clock } from "lucide-react";
+import { HivemindLogo } from "@/components/HivemindLogo";
 
 const links = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard },
@@ -22,7 +23,7 @@ export function AppHeader() {
           <Menu className="h-5 w-5" />
         </button>
         <Link to="/" className="flex items-center gap-2">
-          <Hexagon className="h-5 w-5 text-accent animate-pulse-glow" />
+          <HivemindLogo className="h-6 w-6 drop-shadow-[0_0_3px_oklch(0.82_0.13_200/0.6)]" />
           <span className="font-mono text-lg font-bold tracking-[0.3em] text-primary glow-cyan">HIVEMIND</span>
         </Link>
         <span className="ml-auto hidden font-mono text-xs text-muted-foreground sm:block">{offline ? <span className="text-destructive">{live.status === "connecting" ? "CONNECTING TO BACKEND…" : "BACKEND OFFLINE"}</span> : <>{live.dataset ? `${live.dataset.datasetId} // ` : ""}{now ? formatTime(now) : "NO ACTIVE DATASET"} // <span className={alerts ? "text-destructive" : "text-ok"}>{alerts ? `${alerts} ALERTS` : "ALL SYSTEMS NORMAL"}</span></>}</span>

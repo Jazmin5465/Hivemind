@@ -1,4 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router';
+import { PageTitle } from '@/components/PageTitle';
 import { useState, useLayoutEffect, useRef } from 'react';
 import { Activity, Check, TriangleAlert, Droplets, GitCommitHorizontal, Wrench } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -12,7 +13,7 @@ function TimelinePage(){
   const live=useLive();
   const error=live.status==='error'?live.error:'';
   const nodes=sortHistory([...historyNodes(live),...forecastNodes(live),...decisionNodes(live)]).filter(n=>(mode==='all'||(mode==='history'?n.kind!=='forecast':n.kind==='forecast'||n.kind==='decision'))&&(system==='ALL'||n.system===system)&&(type==='ALL'||(type==='pump'?n.category?.startsWith('pump'):type==='decision'?n.kind==='decision':n.category===type)));
-  return <><PageBackdrop layers={[{ src: '/art/front-buildings.jpg', opacity: 0.08, position: 'center bottom', size: 'cover' }]}/><main className="relative z-10 mx-auto max-w-5xl p-4 md:p-6"><div className="mb-6"><h1 className="font-heading text-3xl tracking-[0.12em] text-heading-pink glow-magenta-soft md:text-4xl">EVENT TIMELINE</h1></div>
+  return <><PageBackdrop layers={[{ src: '/art/front-buildings.jpg', opacity: 0.08, position: 'center bottom', size: 'cover' }]}/><main className="relative z-10 mx-auto max-w-5xl p-4 md:p-6"><div className="mb-6"><PageTitle>EVENT TIMELINE</PageTitle></div>
     <div className="flex flex-wrap gap-2 border-b border-border pb-4">{([['all','All events'],['history','History'],['predict','Forecasts & decisions']] as const).map(([k,l])=><Button key={k} variant={mode===k?'secondary':'ghost'} onClick={()=>setMode(k)}>{l}</Button>)}</div>
     <div className="my-4 flex flex-wrap gap-2">{['ALL',...live.systems.map(x=>x.systemId)].map(s=><Button size="sm" variant={system===s?'secondary':'ghost'} key={s} onClick={()=>setSystem(s)}>{s==='ALL'?'All systems':s}</Button>)}<span className="border-l border-border"/>{([['ALL','All types'],['pipeline_leak','Leaks'],['pump','Pumps'],['recovery','Recoveries'],['decision','Decisions']] as const).map(([k,l])=><Button size="sm" key={k} variant={type===k?'secondary':'ghost'} onClick={()=>setType(k)}>{l}</Button>)}</div>
     {error&&<p role="alert" className="text-sm text-destructive">{error}</p>}

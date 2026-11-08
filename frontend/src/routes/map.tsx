@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { PageTitle } from "@/components/PageTitle";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Plus, Minus, RotateCcw, X, Truck } from "lucide-react";
@@ -125,7 +126,7 @@ function MapPage() {
     <main className="relative z-10 mx-auto max-w-7xl space-y-4 p-4 md:p-6">
       <div className="flex flex-wrap items-end justify-between gap-2">
         <div>
-          <h1 className="font-heading text-3xl tracking-[0.12em] text-heading-pink glow-magenta-soft md:text-4xl">NETWORK MAP</h1>
+          <PageTitle>NETWORK MAP</PageTitle>
           <p className="font-subheading text-sm text-muted-foreground">{tab === "ALL" ? "All systems" : `Isolated ${tab}`} · {mode === "geo" ? "real layouts · spacing between systems compressed" : "schematic"} · Last updated: {live.ready ? formatTime(nowOf(live)) : "—"}</p>
         </div>
         <div className="flex gap-3 font-mono text-[10px] uppercase">
@@ -175,8 +176,8 @@ function MapPage() {
             {mode === "schematic" && systemBoxes.filter((b) => tab === "ALL" || b.id === tab).map((b) => (
               <g key={b.id}>
                 <rect x={b.x} y={b.y} width={b.w} height={b.h} rx="10" fill="oklch(0.17 0.03 290 / 0.88)" stroke={b.health === "CRITICAL" ? "var(--destructive)" : "var(--primary)"} strokeWidth="1" opacity="0.9" filter="url(#glow)" />
-                <text x={b.x + b.w / 2} y={b.y + 22} textAnchor="middle" fontSize="12" fontWeight="bold" fontFamily="JetBrains Mono" fill="var(--primary)">SYSTEM {b.id}</text>
-                <text x={b.x + b.w / 2} y={b.y + 38} textAnchor="middle" fontSize="9" fontFamily="JetBrains Mono" fill="var(--muted-foreground)">{b.trucks} TRUCKS · <tspan fill={b.health === "CRITICAL" ? "var(--destructive)" : "var(--ok)"}>{b.health}</tspan></text>
+                <text x={b.x + b.w / 2} y={b.y + 22} textAnchor="middle" fontSize="12" fontWeight="bold" fontFamily="Satoshi, sans-serif" fill="var(--primary)">SYSTEM {b.id}</text>
+                <text x={b.x + b.w / 2} y={b.y + 38} textAnchor="middle" fontSize="9" fontFamily="Satoshi, sans-serif" fill="var(--muted-foreground)">{b.trucks} TRUCKS · <tspan fill={b.health === "CRITICAL" ? "var(--destructive)" : "var(--ok)"}>{b.health}</tspan></text>
               </g>
             ))}
             {visibleEdges.map((e) => {
@@ -190,7 +191,7 @@ function MapPage() {
                   <path d={d} fill="none" stroke={col} strokeWidth="1.5" strokeDasharray="6 14" className="animate-dash" filter="url(#glow)" opacity={e.failing ? 1 : 0.6} />
                   {[0, 1, 2].map((i) => (
                     <circle key={i} r={e.failing ? 4 : 2.5} fill={e.failing ? "var(--destructive)" : "var(--accent)"} filter="url(#glow)">
-                      <animateMotion dur={e.failing ? "1.6s" : "4s"} begin={`${i * (e.failing ? 0.53 : 1.3)}s`} repeatCount="indefinite" path={d} />
+                      <animateMotion dur={e.failing ? "1.6s" : "4s"} begin={`-${i * (e.failing ? 0.53 : 1.3)}s`} repeatCount="indefinite" path={d} />
                     </circle>
                   ))}
                 </g>
@@ -205,8 +206,8 @@ function MapPage() {
                 ) : (
                   <circle r="15" fill="var(--background)" stroke={statusVar[n.status]} strokeWidth="2" filter="url(#glow)" />
                 )}
-                <text y="4" textAnchor="middle" fontSize="9" fontFamily="JetBrains Mono" fill={statusVar[n.status]}>{kindLabel[n.kind]}</text>
-                <text y="34" textAnchor="middle" fontSize="8" fontFamily="JetBrains Mono" fill="var(--foreground)">{n.label}</text>
+                <text y="4" textAnchor="middle" fontSize="9" fontFamily="Satoshi, sans-serif" fill={statusVar[n.status]}>{kindLabel[n.kind]}</text>
+                <text y="34" textAnchor="middle" fontSize="8" fontFamily="Satoshi, sans-serif" fill="var(--foreground)">{n.label}</text>
               </g>
             ))}
             {mode === "geo" && <GeoTrucks geo={geo} live={live} now={now} tab={tab} />}
@@ -313,10 +314,10 @@ function GeoCards({ geo, live, now, tab }: { geo: GeoModel; live: LiveData; now:
         <line x1={c.attach.x} y1={c.attach.y} x2={c.anchor.x} y2={c.anchor.y} stroke={color} strokeOpacity="0.6" strokeWidth="1" />
         <circle cx={c.anchor.x} cy={c.anchor.y} r="2.5" fill={color} />
         <polygon points={pts} fill="oklch(0.17 0.03 290 / 0.92)" stroke={color} strokeWidth="1.2" filter="url(#glow)" />
-        <text x={c.x + c.w / 2} y={c.y + 20} textAnchor="middle" fontSize="12" fontWeight="bold" fontFamily="JetBrains Mono" fill={color}>SYSTEM {c.system}</text>
-        <text x={c.x + c.w / 2} y={c.y + 37} textAnchor="middle" fontSize="9.5" fontFamily="JetBrains Mono" fill={ongoing.length ? "var(--destructive)" : "var(--ok)"}>{ongoing.length ? `${ongoing.length} alert${ongoing.length > 1 ? "s" : ""}` : "All clear"}</text>
-        <text x={c.x + c.w / 2} y={c.y + 52} textAnchor="middle" fontSize="9.5" fontFamily="JetBrains Mono" fill="var(--muted-foreground)">{free}/{fleet?.trucks ?? 0} trucks free</text>
-        <text x={c.x + c.w / 2} y={c.y + 67} textAnchor="middle" fontSize="9.5" fontFamily="JetBrains Mono" fill={atRisk ? "var(--warning)" : "var(--muted-foreground)"}>{atRisk ? `${usd(atRisk)}/h at risk` : "No revenue at risk"}</text>
+        <text x={c.x + c.w / 2} y={c.y + 20} textAnchor="middle" fontSize="12" fontWeight="bold" fontFamily="Satoshi, sans-serif" fill={color}>SYSTEM {c.system}</text>
+        <text x={c.x + c.w / 2} y={c.y + 37} textAnchor="middle" fontSize="9.5" fontFamily="Satoshi, sans-serif" fill={ongoing.length ? "var(--destructive)" : "var(--ok)"}>{ongoing.length ? `${ongoing.length} alert${ongoing.length > 1 ? "s" : ""}` : "All clear"}</text>
+        <text x={c.x + c.w / 2} y={c.y + 52} textAnchor="middle" fontSize="9.5" fontFamily="Satoshi, sans-serif" fill="var(--muted-foreground)">{free}/{fleet?.trucks ?? 0} trucks free</text>
+        <text x={c.x + c.w / 2} y={c.y + 67} textAnchor="middle" fontSize="9.5" fontFamily="Satoshi, sans-serif" fill={atRisk ? "var(--warning)" : "var(--muted-foreground)"}>{atRisk ? `${usd(atRisk)}/h at risk` : "No revenue at risk"}</text>
       </g>;
     })}
   </g>;
@@ -328,10 +329,10 @@ function GeoOverview({ geo }: { geo: GeoModel }) {
   if (!o.w) return null;
   return <g aria-label="True-scale overview">
     <rect x={o.x} y={o.y} width={o.w} height={o.h} rx="6" fill="oklch(0.15 0.03 290 / 0.92)" stroke="var(--border)" />
-    <text x={o.x + 8} y={o.y + 13} fontSize="8.5" fontFamily="JetBrains Mono" fill="var(--muted-foreground)">TRUE SCALE{geo.compression < 0.99 ? ` · map spacing ×${geo.compression.toFixed(2)}` : ""}</text>
+    <text x={o.x + 8} y={o.y + 13} fontSize="8.5" fontFamily="Satoshi, sans-serif" fill="var(--muted-foreground)">TRUE SCALE{geo.compression < 0.99 ? ` · map spacing ×${geo.compression.toFixed(2)}` : ""}</text>
     {o.dots.map((d, i) => d.kind === "yard"
       ? <rect key={i} x={d.x - 2} y={d.y - 2} width="4" height="4" fill="none" stroke={geo.systemColor[d.system]} strokeWidth="0.8" />
       : <circle key={i} cx={d.x} cy={d.y} r={d.kind === "disposal" ? 1.8 : 2.4} fill={d.status === "fail" ? "var(--destructive)" : d.status === "warn" ? "var(--warning)" : geo.systemColor[d.system]} />)}
-    {o.labels.map((l) => <text key={l.system} x={l.x} y={l.y - 7} textAnchor="middle" fontSize="8" fontFamily="JetBrains Mono" fill={geo.systemColor[l.system]}>{l.system}</text>)}
+    {o.labels.map((l) => <text key={l.system} x={l.x} y={l.y - 7} textAnchor="middle" fontSize="8" fontFamily="Satoshi, sans-serif" fill={geo.systemColor[l.system]}>{l.system}</text>)}
   </g>;
 }

@@ -1,4 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router';
+import { PageTitle } from '@/components/PageTitle';
 import { useEffect, useState } from 'react';
 import { ArrowRight, Droplets, Wrench, Truck, CircleAlert, Check, Bot, Send, ScrollText } from 'lucide-react';
 import { Input } from '@/components/ui/input';
@@ -39,7 +40,7 @@ function Dashboard() {
       <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="mb-2 font-subheading text-sm uppercase tracking-widest text-muted-foreground">Operations / Avon</p>
-          <h1 className="font-heading text-3xl tracking-[0.12em] text-heading-pink glow-magenta-soft md:text-4xl">PRIORITY QUEUE</h1>
+          <PageTitle>PRIORITY QUEUE</PageTitle>
         </div>
         <div className="text-right font-mono text-xs text-muted-foreground">
           <p>Last updated: {live.ready?formatTime(nowOf(live)):'—'}</p>
@@ -51,11 +52,13 @@ function Dashboard() {
       <ol className="grid gap-3">
         {queue.map((item,i)=>{
           const Icon=item.category==='pipeline_leak'?Droplets:item.category==='pump_degradation'?Wrench:item.category==='pump_failure'?CircleAlert:Droplets;
-          return <li key={item.id} className="min-w-0"><Button variant="outline" disabled={loading} onClick={()=>setSelected(item)} aria-label={`Evaluate ${item.facility} — ${item.title}`} className="priority-card h-auto min-h-32 w-full min-w-0 flex-col items-stretch justify-start whitespace-normal rounded-md border-border bg-card p-5 text-left shadow-none transition-[border-color,box-shadow,background-color] hover:bg-secondary">
+          return <li key={item.id} className="min-w-0"><Button variant="outline" disabled={loading} onClick={()=>setSelected(item)} aria-label={`Evaluate ${item.facility} — ${item.title}`} className="priority-card h-auto w-full min-w-0 flex-col items-stretch justify-start whitespace-normal rounded-md border-border bg-card p-5 text-left shadow-none transition-[border-color,box-shadow,background-color] hover:bg-secondary">
             <span className="flex items-center gap-2 font-mono text-xs text-muted-foreground"><span className="mr-1 text-lg font-semibold tabular-nums text-primary">{String(i+1).padStart(2,'0')}</span><Icon className={item.severity==='critical'?'text-destructive':'text-muted-foreground'}/><span className={item.scenario?'':'text-destructive'}>{item.scenario?'PROACTIVE WATCH':'ACTIVE FAILURE'}</span>{item.confidence!==undefined&&<span className="ml-auto">{Math.round(item.confidence*100)}% confidence</span>}</span>
-            <span className="mt-2 text-lg font-semibold">{item.title}</span><span className="break-all font-mono text-xs text-muted-foreground">{item.facility}</span>
-            <span className="mt-4 font-mono text-sm uppercase tracking-wider text-muted-foreground">{item.seconds===undefined?'Status':item.scenario?'Time to shut-in if pump stops':'Time to shut-in'}</span>
-            <span className={`font-mono font-semibold tabular-nums ${item.seconds===undefined?'text-2xl':'countdown-glow text-4xl'}`}>{item.seconds===undefined?(item.category==='pipeline_leak'?'Active leak':'Inspection needed'):fmtCountdown(tickSeconds(live,item.seconds,now)??0)}</span>
+            <span className="mt-2 grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+            <span className="flex min-w-0 flex-col"><span className="text-lg font-semibold">{item.title}</span><span className="break-all font-mono text-xs text-muted-foreground">{item.facility}</span></span>
+            <span className="flex flex-col sm:items-end sm:text-right"><span className="font-subheading text-sm uppercase tracking-widest text-muted-foreground">{item.seconds===undefined?'Status':item.scenario?'Time to shut-in if pump stops':'Time to shut-in'}</span>
+            <span className={`font-subheading uppercase tabular-nums ${item.seconds===undefined?'text-2xl':'countdown-glow text-4xl'}`}>{item.seconds===undefined?(item.category==='pipeline_leak'?'Active leak':'Inspection needed'):fmtCountdown(tickSeconds(live,item.seconds,now)??0)}</span></span>
+            </span>
           </Button></li>;
         })}
       </ol>
@@ -63,7 +66,7 @@ function Dashboard() {
       </div>
     </section>
     <TvWallBand/>
-    <section><h2 className="mb-4 font-heading text-2xl uppercase tracking-wide">Emergency fleets</h2><div className="flex gap-3 overflow-x-auto pb-3">{fleets.map(f=>{const busy=fleetTrucks(live,f,now).filter(t=>t.status!=='Standby').length;return <Button key={f.id} variant="outline" aria-expanded={fleetId===f.id} onClick={()=>setFleetId(fleetId===f.id?null:f.id)} className={`fleet-card h-auto min-w-52 flex-col items-start rounded-md border-border bg-card p-4 text-left shadow-none ${fleetId===f.id?'border-accent':''}`}><span className="font-mono text-sm">{f.name}</span><span className="flex items-center gap-2 text-sm text-muted-foreground"><Truck/>{f.trucks-busy} of {f.trucks} trucks available</span><span className="text-xs text-muted-foreground">{busy?`${busy} dispatched`:'All at yard'}</span></Button>;})}</div>{openFleet&&<FleetPanel fleet={openFleet} now={now} close={()=>setFleetId(null)}/>}</section>
+    <section><h2 className="mb-4 font-heading text-2xl uppercase tracking-[0.3em]">Emergency fleets</h2><div className="flex gap-3 overflow-x-auto pb-3">{fleets.map(f=>{const busy=fleetTrucks(live,f,now).filter(t=>t.status!=='Standby').length;return <Button key={f.id} variant="outline" aria-expanded={fleetId===f.id} onClick={()=>setFleetId(fleetId===f.id?null:f.id)} className={`fleet-card h-auto min-w-52 flex-col items-start rounded-md border-border bg-card p-4 text-left shadow-none ${fleetId===f.id?'border-accent':''}`}><span className="font-mono text-sm">{f.name}</span><span className="flex items-center gap-2 text-sm text-muted-foreground"><Truck/>{f.trucks-busy} of {f.trucks} trucks available</span><span className="text-xs text-muted-foreground">{busy?`${busy} dispatched`:'All at yard'}</span></Button>;})}</div>{openFleet&&<FleetPanel fleet={openFleet} now={now} close={()=>setFleetId(null)}/>}</section>
     <FleetRecommendations live={live}/>
     <Assistant live={live}/>
     <BuiltWith/>
@@ -77,7 +80,7 @@ function FleetRecommendations({live}:{live:LiveData}) {
     {list.length?<ul className="space-y-3">{list.map(r=><li key={r.from+r.to} className="text-sm"><p className="flex items-center gap-2 font-mono font-semibold">{r.from}<ArrowRight className="size-4 text-accent"/>{r.to}<span className="ml-auto text-xs font-normal text-muted-foreground">{r.km.toFixed(0)} km between yards</span></p><p className="mt-1 text-xs text-muted-foreground">{kind==='temporary'?'Lend 1 truck until it returns. ':'Reassign 1 truck permanently. '}{r.reason}</p></li>)}</ul>
     :<p className="text-sm text-muted-foreground">{kind==='temporary'?'Every fleet has a truck on standby.':'Truck counts match each system’s failure history.'}</p>}
   </div>;};
-  return <section><h2 className="mb-4 font-heading text-2xl uppercase tracking-wide">Fleet recommendations</h2><div className="grid gap-3 md:grid-cols-2">{group('temporary','Right now')}{group('long_term','Long term')}</div></section>;
+  return <section><h2 className="mb-4 font-heading text-2xl uppercase tracking-[0.3em]">Fleet recommendations</h2><div className="grid gap-3 md:grid-cols-2">{group('temporary','Right now')}{group('long_term','Long term')}</div></section>;
 }
 function DecisionModal({item,close}:{item:PriorityItem;close:()=>void}) {
   const live=useLive();
@@ -214,9 +217,9 @@ function Assistant({live}:{live:LiveData}) {
   };
   const qs=agentQuestions(live);
   const handoff=latestHandoff(live);
-  return <section><h2 className="mb-4 flex items-center gap-2 font-heading text-2xl uppercase tracking-wide"><Bot className="size-5 text-accent"/>Night-shift assistant</h2><div className="grid gap-3 md:grid-cols-2">
+  return <section><h2 className="mb-4 font-heading text-2xl uppercase tracking-[0.3em]">Night-shift assistant</h2><div className="grid gap-3 md:grid-cols-2">
     <div className="rounded-md border border-border bg-card p-4">
-      <h3 className="mb-3 font-subheading text-sm uppercase tracking-wider text-muted-foreground">Ask the agent</h3>
+      <h3 className="mb-3 flex items-center gap-2 font-subheading text-sm uppercase tracking-wider text-muted-foreground">Ask the agent<Bot className="size-4 text-accent"/></h3>
       <form className="flex gap-2" onSubmit={e=>{e.preventDefault();void ask(text);}}>
         <Input aria-label="Question for the agent" placeholder="e.g. What if we lose a truck?" value={text} onChange={e=>setText(e.target.value)} disabled={busy||!live.ready}/>
         <Button type="submit" disabled={busy||!text.trim()||!live.ready} aria-label="Ask"><Send/></Button>
