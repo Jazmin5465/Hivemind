@@ -49,6 +49,7 @@ export class LlmError extends Error {
 }
 
 const HOSTED_URL = 'https://integrate.api.nvidia.com/v1';
+const HOSTED_NANO = 'nvidia/nemotron-nano-3-30b-a3b';
 
 export function llmConfigFromEnv(env: Record<string, string | undefined> = process.env): LlmConfig {
   const raw = (env.LLM_PROVIDER ?? 'template').trim() as Provider;
@@ -57,7 +58,9 @@ export function llmConfigFromEnv(env: Record<string, string | undefined> = proce
   return {
     provider,
     baseUrl: (env.LLM_BASE_URL || (provider === 'nvidia_hosted' ? HOSTED_URL : '')).replace(/\/+$/, ''),
-    model: env.LLM_MODEL || '',
+    // hosted Nemotron 3 Nano id as listed by GET /v1/models on 2026-11-07
+    // ('nvidia/nemotron-3-nano-30b-a3b' returns 410 end-of-life)
+    model: env.LLM_MODEL || (provider === 'nvidia_hosted' ? HOSTED_NANO : ''),
     apiKey,
     temperature: num(env.LLM_TEMPERATURE, 1.0),
     topP: num(env.LLM_TOP_P, 0.95),

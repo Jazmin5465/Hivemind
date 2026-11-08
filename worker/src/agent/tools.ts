@@ -4,7 +4,7 @@ import { planSystem, type PlanOverrides, type SystemPlan } from '../../../core/s
 import { validatePlan, type ValidateResult } from '../../../core/src/validate';
 import type { PlanAction } from '../../../core/src/types';
 import { collectFacts, factsFromText, FactSet } from '../../../core/src/verifier';
-import { busyTrucks, coveredEventIds, datasetCtx, hhmm, systemFailures, usd, type DatasetCtx } from './context';
+import { busyTrucks, coveredEventIds, datasetCtx, hhmm, systemFailures, usd, when, type DatasetCtx } from './context';
 import type { AgentBackend, ActionIn } from './state';
 import type { ToolSpec } from './llm';
 
@@ -148,7 +148,7 @@ export class ToolBox {
     const evidence = c.state.evidence.filter((x) => x.eventId === eventId).sort((x, y) => x.rank - y.rank).map((x) => x.text);
     return {
       eventId, category: e.category, status: e.status, systemId: e.systemId, facilityId: e.facilityId, assetId: e.assetId,
-      onsetUnix: e.onsetUnix, onset: `${hhmm(e.onsetUnix)} UTC`, nowUnix: c.nowUnix, now: `${hhmm(c.nowUnix)} UTC`,
+      onsetUnix: e.onsetUnix, onset: when(e.onsetUnix, c.nowUnix), nowUnix: c.nowUnix, now: `${hhmm(c.nowUnix)} UTC`,
       confidencePct: Math.round(e.confidence * 100), source: e.source, alertRank: e.alertRank,
       levelPct: e.levelPct == null ? null : Math.round(e.levelPct * 10) / 10,
       shutdownPct: c.model.shutdownPct, warningPct: c.model.warningPct,
@@ -288,7 +288,7 @@ export class ToolBox {
       const claim = c.state.claims.find((x) => x.eventId === e.eventId);
       return {
         eventId: e.eventId, alertRank: e.alertRank, category: e.category, facilityId: e.facilityId, assetId: e.assetId,
-        since: `${hhmm(e.onsetUnix)} UTC`, onsetUnix: e.onsetUnix,
+        since: when(e.onsetUnix, c.nowUnix), onsetUnix: e.onsetUnix,
         hoursToLimitP50: e.hoursToLimitP50 == null ? null : round2(e.hoursToLimitP50),
         levelPct: e.levelPct == null ? null : Math.round(e.levelPct * 10) / 10,
         repairEnd: e.repairEndUnix ? `${hhmm(e.repairEndUnix)} UTC` : null, repairEndUnix: e.repairEndUnix ?? null,
@@ -299,7 +299,7 @@ export class ToolBox {
     return {
       datasetId: c.ds.datasetId, nowUnix: c.nowUnix, now: `${hhmm(c.nowUnix)} UTC`, ongoingCount: ongoing.length,
       ongoing: items, resolvedLast12hCount: recent.length,
-      resolvedLast12h: recent.map((e) => ({ category: e.category, assetId: e.assetId, endUnix: e.endUnix, ended: `${hhmm(e.endUnix)} UTC` })),
+      resolvedLast12h: recent.map((e) => ({ category: e.category, assetId: e.assetId, endUnix: e.endUnix, ended: when(e.endUnix, c.nowUnix) })),
     };
   }
 }

@@ -40,7 +40,7 @@ export function truckDispatch(f: PlanSummary['facilities'][number], plan: PlanSu
   if (!f.trucks) return null;
   return (
     `Truck crew ${plan.systemId}: send ${f.trucks} truck${f.trucks > 1 ? 's' : ''} to ${f.facilityId} now, ` +
-    `${f.tripsPerTruck} trip${f.tripsPerTruck > 1 ? 's' : ''} each; loads arrive ${f.truckArrivals.join(', ')}. ` +
+    `${f.tripsPerTruck} trip${f.tripsPerTruck > 1 ? 's' : ''}${f.trucks > 1 ? ' each' : ''}; ${f.truckArrivals.length > 1 ? 'loads arrive' : 'load arrives'} ${f.truckArrivals.join(', ')}. ` +
     `Repair expected by ${f.repairEnd}.`
   );
 }
@@ -69,13 +69,20 @@ export function whatifAnswer(question: string, base: PlanSummary, alt: PlanSumma
 
 export function statusAnswer(h: Record<string, any>): string {
   if (!h.ongoingCount) return `No ongoing problems at ${h.now}.`;
-  const top = (h.ongoing as any[]).slice(0, 4).map((x) => itemLine(x));
+  const seen = new Set<number>();
+  const top = (h.ongoing as any[]).slice(0, 4).map((x) => itemLine(x, seen));
   return `At ${h.now}: ${top.join(' ')}`;
 }
 
-function itemLine(x: Record<string, any>): string {
+/** one line per alert; a system plan shared by several failures is printed once */
+function itemLine(x: Record<string, any>, seenPlans: Set<number>): string {
   if (x.category === 'pump_failure') {
-    const plan = x.plan ? ` Plan (${x.plan.status}) ${usd(x.plan.totalCost)}: ${x.plan.summary}.` : '';
+    let plan = '';
+    if (x.plan && seenPlans.has(x.plan.planId)) plan = ` Covered by plan #${x.plan.planId} above.`;
+    else if (x.plan) {
+      seenPlans.add(x.plan.planId);
+      plan = ` Plan #${x.plan.planId} (${x.plan.status}) ${usd(x.plan.totalCost)}: ${x.plan.summary}.`;
+    }
     return `#${x.alertRank} ${x.facilityId} pump failure, ${x.hoursToLimitP50 != null ? `${hours1(x.hoursToLimitP50)} to shutdown` : 'already shut in'}, repair by ${x.repairEnd}.${plan}${x.owner ? ` Owner ${x.owner}.` : ''}`;
   }
   return `#${x.alertRank} ${x.assetId} ${CAT[x.category] ?? x.category} since ${x.since}: send inspector.${x.owner ? ` Owner ${x.owner}.` : ''}`;
@@ -84,7 +91,8 @@ function itemLine(x: Record<string, any>): string {
 export function handoffText(h: Record<string, any>): string {
   const head = `Shift handoff, ${h.datasetId} at ${h.now}.`;
   if (!h.ongoingCount) return `${head} Nothing in progress.${h.resolvedLast12hCount ? ` Problems resolved in the last 12 h: ${h.resolvedLast12h.map((r: any) => r.assetId).join(', ')}.` : ''}`;
-  const items = (h.ongoing as any[]).map((x) => itemLine(x));
-  const res = h.resolvedLast12hCount ? ` Recently resolved: ${h.resolvedLast12h.map((r: any) => `${r.assetId} (${r.ended})`).join(', ')}.` : '';
+  const seen = new Set<number>();
+  const items = (h.ongoing as any[]).map((x) => itemLine(x, seen));
+  const res = h.resolvedLast12hCount ? ` Recently resolved: ${h.resolvedLast12h.map((r: any) => `${r.assetId} ${CAT[r.category] ?? r.category} (${r.ended})`).join(', ')}.` : '';
   return `${head} ${items.join(' ')}${res}`;
 }

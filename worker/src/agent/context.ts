@@ -71,5 +71,12 @@ export function systemFailures(c: DatasetCtx, systemId: string): { failures: Fai
 
 export const hhmm = (unix: number | null | undefined) =>
   unix == null || !Number.isFinite(unix) ? '-' : new Date(Math.round(unix / 60) * 60_000).toISOString().slice(11, 16);
-export const usd = (x: number) => `$${Math.round(x).toLocaleString('en-US')}`;
+/** "HH:MM UTC" on the same UTC day as now, else "MM-DD HH:MM UTC" */
+export const when = (unix: number | null | undefined, nowUnix: number) => {
+  if (unix == null || !Number.isFinite(unix)) return '-';
+  const d = new Date(Math.round(unix / 60) * 60_000).toISOString();
+  const sameDay = d.slice(0, 10) === new Date(nowUnix * 1000).toISOString().slice(0, 10);
+  return `${sameDay ? '' : `${d.slice(5, 10)} `}${d.slice(11, 16)} UTC`;
+};
+export const usd =(x: number) => `$${Math.round(x).toLocaleString('en-US')}`;
 export const hours1 = (h: number) => `${h.toFixed(1)} h`;
