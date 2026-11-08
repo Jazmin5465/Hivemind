@@ -368,10 +368,9 @@ python ml/eval/plot_trees.py              # regenerate the tree images
 
 | Name | Role |
 |---|---|
-| TEAMMATE_NAME | TEAMMATE_ROLE |
-| TEAMMATE_NAME | TEAMMATE_ROLE |
-| TEAMMATE_NAME | TEAMMATE_ROLE |
-| TEAMMATE_NAME | TEAMMATE_ROLE |
+| Hadent Dang | Full Stack |
+| Jazmin Gutierrez | Full Stack |
+| Suhani Rana | Full Stack |
 
 ## Acknowledgments
 
