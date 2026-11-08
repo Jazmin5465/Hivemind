@@ -4,6 +4,17 @@
 
 @custom-variant dark (&:is(.dark *));
 
+@font-face {
+  font-family: "Hypik";
+  src: url("/fonts/hypik.woff2") format("woff2");
+  font-display: swap;
+}
+@font-face {
+  font-family: "Elevon";
+  src: url("/fonts/elevon-trial-threeg.woff2") format("woff2");
+  font-display: swap;
+}
+
 @theme inline {
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
@@ -34,13 +45,17 @@
   --font-sans: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, monospace;
   --font-pixel: "VT323", monospace;
+  /* headings: Hypik (letters only; digits/punctuation fall back to Space Grotesk) */
+  --font-heading: "Hypik", "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
+  /* subheadings */
+  --font-subheading: "Elevon", "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
 }
 
 :root {
   --radius: 0.25rem;
   --background: oklch(0.13 0.03 300);
   --foreground: oklch(0.95 0.01 300);
-  --card: oklch(0.18 0.03 290 / 0.55);
+  --card: oklch(0.17 0.03 290 / 0.9);
   --card-foreground: oklch(0.95 0.01 300);
   --popover: oklch(0.16 0.03 290);
   --popover-foreground: oklch(0.95 0.01 300);

@@ -116,8 +116,8 @@ function MapPage() {
     <main className="relative z-10 mx-auto max-w-7xl space-y-4 p-4 md:p-6">
       <div className="flex flex-wrap items-end justify-between gap-2">
         <div>
-          <h1 className="font-mono text-2xl font-bold tracking-[0.2em] text-heading-pink glow-magenta-soft">NETWORK MAP</h1>
-          <p className="font-mono text-xs text-muted-foreground">{tab === "ALL" ? "All systems" : `Isolated ${tab}`} · {mode === "geo" ? "GPS positions" : "schematic"} · Last updated: {live.ready ? formatTime(nowOf(live)) : "—"}</p>
+          <h1 className="font-heading text-3xl tracking-[0.12em] text-heading-pink glow-magenta-soft md:text-4xl">NETWORK MAP</h1>
+          <p className="font-subheading text-sm text-muted-foreground">{tab === "ALL" ? "All systems" : `Isolated ${tab}`} · {mode === "geo" ? "GPS positions" : "schematic"} · Last updated: {live.ready ? formatTime(nowOf(live)) : "—"}</p>
         </div>
         <div className="flex gap-3 font-mono text-[10px] uppercase">
           <span className="text-primary">● Normal</span><span className="text-warning">● Warning</span><span className="text-destructive">● Failing</span>
@@ -169,7 +169,7 @@ function MapPage() {
             ))}
             {mode === "schematic" && systemBoxes.filter((b) => tab === "ALL" || b.id === tab).map((b) => (
               <g key={b.id}>
-                <rect x={b.x} y={b.y} width={b.w} height={b.h} rx="10" fill="oklch(0.18 0.03 290 / 0.45)" stroke={b.health === "CRITICAL" ? "var(--destructive)" : "var(--primary)"} strokeWidth="1" opacity="0.9" filter="url(#glow)" />
+                <rect x={b.x} y={b.y} width={b.w} height={b.h} rx="10" fill="oklch(0.17 0.03 290 / 0.88)" stroke={b.health === "CRITICAL" ? "var(--destructive)" : "var(--primary)"} strokeWidth="1" opacity="0.9" filter="url(#glow)" />
                 <text x={b.x + b.w / 2} y={b.y + 22} textAnchor="middle" fontSize="12" fontWeight="bold" fontFamily="JetBrains Mono" fill="var(--primary)">SYSTEM {b.id}</text>
                 <text x={b.x + b.w / 2} y={b.y + 38} textAnchor="middle" fontSize="9" fontFamily="JetBrains Mono" fill="var(--muted-foreground)">{b.trucks} TRUCKS · <tspan fill={b.health === "CRITICAL" ? "var(--destructive)" : "var(--ok)"}>{b.health}</tspan></text>
               </g>

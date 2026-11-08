@@ -38,8 +38,8 @@ function Dashboard() {
     <section>
       <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="mb-2 font-mono text-xs uppercase text-muted-foreground">Operations / Avon</p>
-          <h1 className="font-mono text-2xl font-bold tracking-[0.2em] text-heading-pink glow-magenta-soft">PRIORITY QUEUE</h1>
+          <p className="mb-2 font-subheading text-sm uppercase tracking-widest text-muted-foreground">Operations / Avon</p>
+          <h1 className="font-heading text-3xl tracking-[0.12em] text-heading-pink glow-magenta-soft md:text-4xl">PRIORITY QUEUE</h1>
         </div>
         <div className="text-right font-mono text-xs text-muted-foreground">
           <p>Last updated: {live.ready?formatTime(nowOf(live)):'—'}</p>
@@ -47,7 +47,7 @@ function Dashboard() {
         </div>
       </div>
       {status&&<p role="alert" className="mb-3 text-sm text-destructive">{status}</p>}
-      <div role="region" aria-label="Scrollable priority queue" tabIndex={0} className="priority-queue-scroll max-h-[min(26rem,55dvh)] overflow-y-auto overscroll-contain rounded-md border border-border bg-background/40 p-3 focus-visible:outline-2 focus-visible:outline-ring">
+      <div role="region" aria-label="Scrollable priority queue" tabIndex={0} className="priority-queue-scroll max-h-[min(26rem,55dvh)] overflow-y-auto overscroll-contain rounded-md border border-border bg-background/85 p-3 focus-visible:outline-2 focus-visible:outline-ring">
       <ol className="grid gap-3">
         {queue.map((item,i)=>{
           const Icon=item.category==='pipeline_leak'?Droplets:item.category==='pump_degradation'?Wrench:item.category==='pump_failure'?CircleAlert:Droplets;
@@ -63,7 +63,7 @@ function Dashboard() {
       </div>
     </section>
     <TvWallBand/>
-    <section><h2 className="mb-4 text-lg font-semibold">Emergency fleets</h2><div className="flex gap-3 overflow-x-auto pb-3">{fleets.map(f=>{const busy=fleetTrucks(live,f,now).filter(t=>t.status!=='Standby').length;return <Button key={f.id} variant="outline" aria-expanded={fleetId===f.id} onClick={()=>setFleetId(fleetId===f.id?null:f.id)} className={`fleet-card h-auto min-w-52 flex-col items-start rounded-md border-border bg-card p-4 text-left shadow-none ${fleetId===f.id?'border-accent':''}`}><span className="font-mono text-sm">{f.name}</span><span className="flex items-center gap-2 text-sm text-muted-foreground"><Truck/>{f.trucks-busy} of {f.trucks} trucks available</span><span className="text-xs text-muted-foreground">{busy?`${busy} dispatched`:'All at yard'}</span></Button>;})}</div>{openFleet&&<FleetPanel fleet={openFleet} now={now} close={()=>setFleetId(null)}/>}</section>
+    <section><h2 className="mb-4 font-heading text-2xl uppercase tracking-wide">Emergency fleets</h2><div className="flex gap-3 overflow-x-auto pb-3">{fleets.map(f=>{const busy=fleetTrucks(live,f,now).filter(t=>t.status!=='Standby').length;return <Button key={f.id} variant="outline" aria-expanded={fleetId===f.id} onClick={()=>setFleetId(fleetId===f.id?null:f.id)} className={`fleet-card h-auto min-w-52 flex-col items-start rounded-md border-border bg-card p-4 text-left shadow-none ${fleetId===f.id?'border-accent':''}`}><span className="font-mono text-sm">{f.name}</span><span className="flex items-center gap-2 text-sm text-muted-foreground"><Truck/>{f.trucks-busy} of {f.trucks} trucks available</span><span className="text-xs text-muted-foreground">{busy?`${busy} dispatched`:'All at yard'}</span></Button>;})}</div>{openFleet&&<FleetPanel fleet={openFleet} now={now} close={()=>setFleetId(null)}/>}</section>
     <FleetRecommendations live={live}/>
     <Assistant live={live}/>
     <BuiltWith/>
@@ -73,11 +73,11 @@ function Dashboard() {
 function FleetRecommendations({live}:{live:LiveData}) {
   const recs=recommendations(live); // computed by the backend (fleet_recommendation)
   const group=(kind:'temporary'|'long_term',title:string)=>{const list=recs.filter(r=>r.kind===kind);return <div className="rounded-md border border-border bg-card p-4">
-    <h3 className="mb-3 font-mono text-xs uppercase text-muted-foreground">{title}</h3>
+    <h3 className="mb-3 font-subheading text-sm uppercase tracking-wider text-muted-foreground">{title}</h3>
     {list.length?<ul className="space-y-3">{list.map(r=><li key={r.from+r.to} className="text-sm"><p className="flex items-center gap-2 font-mono font-semibold">{r.from}<ArrowRight className="size-4 text-accent"/>{r.to}<span className="ml-auto text-xs font-normal text-muted-foreground">{r.km.toFixed(0)} km between yards</span></p><p className="mt-1 text-xs text-muted-foreground">{kind==='temporary'?'Lend 1 truck until it returns. ':'Reassign 1 truck permanently. '}{r.reason}</p></li>)}</ul>
     :<p className="text-sm text-muted-foreground">{kind==='temporary'?'Every fleet has a truck on standby.':'Truck counts match each system’s failure history.'}</p>}
   </div>;};
-  return <section><h2 className="mb-4 text-lg font-semibold">Fleet recommendations</h2><div className="grid gap-3 md:grid-cols-2">{group('temporary','Right now')}{group('long_term','Long term')}</div></section>;
+  return <section><h2 className="mb-4 font-heading text-2xl uppercase tracking-wide">Fleet recommendations</h2><div className="grid gap-3 md:grid-cols-2">{group('temporary','Right now')}{group('long_term','Long term')}</div></section>;
 }
 function DecisionModal({item,close}:{item:PriorityItem;close:()=>void}) {
   const live=useLive();
@@ -125,7 +125,7 @@ function DecisionModal({item,close}:{item:PriorityItem;close:()=>void}) {
     finally{setBusy(false);}
   };
   return <><DialogHeader className="pr-6 text-left">
-      <DialogTitle className="flex flex-wrap items-center gap-2 break-words leading-relaxed">{item.facility} · Remediation plan for {item.title.toLowerCase()}</DialogTitle>
+      <DialogTitle className="flex flex-wrap items-center gap-2 break-words font-subheading text-lg leading-relaxed">{item.facility} · Remediation plan for {item.title.toLowerCase()}</DialogTitle>
       <DialogDescription className="font-mono text-xs">{!inspect?`${(repairHours??0).toFixed(1)}h repair window · ${fleetSize} trucks in fleet${covered>1?` · joint plan for ${covered} pump failures in ${item.systemId}`:''}${item.scenario?' · contingency if this pump fails now':''}`:item.category==='pipeline_leak'?'Pipeline leak · pump continues moving water':'Pump wear · no alternate disposal needed'}</DialogDescription>
     </DialogHeader>
     <WhyFlagged live={live} eventId={item.eventId}/>
@@ -172,7 +172,7 @@ function WhyFlagged({live,eventId}:{live:LiveData;eventId:string|undefined}) {
   const why=whyFlagged(live,eventId);
   if(!why.reasons.length)return null;
   return <section aria-label="Why this was flagged" className="rounded-md border border-border bg-background/40 p-3">
-    <h3 className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">{why.source==='model'?'Why the model flagged this':'Why it was flagged'}</h3>
+    <h3 className="font-subheading text-xs uppercase tracking-wider text-muted-foreground">{why.source==='model'?'Why the model flagged this':'Why it was flagged'}</h3>
     <ul className="mt-2 list-disc space-y-1 pl-5 text-sm">{why.reasons.map(r=><li key={r}>{r}</li>)}</ul>
   </section>;
 }
@@ -192,10 +192,10 @@ function AgentBriefing({live,eventId}:{live:LiveData;eventId:string|undefined}) 
   const b=agentBriefing(live,eventId);
   if(!b)return null;
   return <section aria-label="Agent briefing" className="rounded-md border border-accent/50 bg-accent/5 p-3">
-    <h3 className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-wider text-accent"><Bot className="size-4"/>Nemotron agent{b.run.status==='running'?' · analyzing…':` · ${(b.run.latencyMs/1000).toFixed(1)} s`}</h3>
+    <h3 className="flex items-center gap-2 font-subheading text-xs uppercase tracking-wider text-accent"><Bot className="size-4"/>Nemotron agent{b.run.status==='running'?' · analyzing…':` · ${(b.run.latencyMs/1000).toFixed(1)} s`}</h3>
     {b.run.summary&&<p className="mt-2 whitespace-pre-line text-sm leading-relaxed">{b.run.summary}</p>}
     {b.messages.length>0&&<div className="mt-3">
-      <h4 className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">Drafted dispatch messages</h4>
+      <h4 className="font-subheading text-xs uppercase tracking-wider text-muted-foreground">Drafted dispatch messages</h4>
       <ul className="mt-1 space-y-1 text-xs">{b.messages.map(m=><li key={String(m.id)} className="rounded border border-border bg-background/40 px-2 py-1"><span className="font-mono text-accent">{m.recipient}:</span> {m.text}</li>)}</ul>
     </div>}
   </section>;
@@ -214,9 +214,9 @@ function Assistant({live}:{live:LiveData}) {
   };
   const qs=agentQuestions(live);
   const handoff=latestHandoff(live);
-  return <section><h2 className="mb-4 flex items-center gap-2 text-lg font-semibold"><Bot className="size-5 text-accent"/>Night-shift assistant</h2><div className="grid gap-3 md:grid-cols-2">
+  return <section><h2 className="mb-4 flex items-center gap-2 font-heading text-2xl uppercase tracking-wide"><Bot className="size-5 text-accent"/>Night-shift assistant</h2><div className="grid gap-3 md:grid-cols-2">
     <div className="rounded-md border border-border bg-card p-4">
-      <h3 className="mb-3 font-mono text-xs uppercase text-muted-foreground">Ask the agent</h3>
+      <h3 className="mb-3 font-subheading text-sm uppercase tracking-wider text-muted-foreground">Ask the agent</h3>
       <form className="flex gap-2" onSubmit={e=>{e.preventDefault();void ask(text);}}>
         <Input aria-label="Question for the agent" placeholder="e.g. What if we lose a truck?" value={text} onChange={e=>setText(e.target.value)} disabled={busy||!live.ready}/>
         <Button type="submit" disabled={busy||!text.trim()||!live.ready} aria-label="Ask"><Send/></Button>
@@ -226,7 +226,7 @@ function Assistant({live}:{live:LiveData}) {
       :<p className="mt-3 text-sm text-muted-foreground">No questions yet.</p>}
     </div>
     <div className="rounded-md border border-border bg-card p-4">
-      <div className="mb-3 flex items-center justify-between gap-2"><h3 className="font-mono text-xs uppercase text-muted-foreground">Shift handoff</h3><Button variant="outline" size="sm" disabled={busy||!live.ready} onClick={()=>void ask('Write the shift handoff.')}><ScrollText/>Write handoff</Button></div>
+      <div className="mb-3 flex items-center justify-between gap-2"><h3 className="font-subheading text-sm uppercase tracking-wider text-muted-foreground">Shift handoff</h3><Button variant="outline" size="sm" disabled={busy||!live.ready} onClick={()=>void ask('Write the shift handoff.')}><ScrollText/>Write handoff</Button></div>
       {handoff?<><p className="font-mono text-[10px] text-muted-foreground">{handoff.authorName} · {handoff.source} · as of {formatTime(handoff.asOfUnix)}</p><p className="mt-2 whitespace-pre-line text-sm leading-relaxed">{handoff.text}</p></>
       :<p className="text-sm text-muted-foreground">No handoff yet. Ask the agent to write one.</p>}
     </div>
@@ -250,7 +250,7 @@ const SPONSORS = [
 /** Sponsor tools and data this console is built on. */
 function BuiltWith() {
   return <section aria-labelledby="built-with" className="border-t border-border pt-8">
-    <h2 id="built-with" className="mb-6 text-center font-mono text-xs uppercase tracking-[0.3em] text-muted-foreground">Built using tools and data from</h2>
+    <h2 id="built-with" className="mb-6 text-center font-heading text-xl uppercase tracking-[0.2em] text-muted-foreground">Built using tools and data from</h2>
     <ul className="flex flex-wrap items-center justify-center gap-10">
       {SPONSORS.map(s=><li key={s.name}><img src={s.src} alt={s.name} className="h-12 w-auto object-contain opacity-90 [filter:brightness(0)_invert(1)] md:h-14"/></li>)}
     </ul>

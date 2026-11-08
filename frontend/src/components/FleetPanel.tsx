@@ -33,7 +33,7 @@ export function FleetPanel({ fleet, now, close }: { fleet: Fleet; now?: number; 
   const trucks = fleetTrucks(live, fleet, t);
   const logistics = live.opsFacilities.filter((f) => f.systemId === fleet.id);
   return <div role="region" aria-label={`${fleet.name} truck status`} className="mt-3 rounded-md border border-accent/60 bg-card p-4">
-    <div className="mb-3 flex items-center justify-between"><h3 className="font-mono text-sm font-semibold">{fleet.name}</h3><Button variant="ghost" size="icon" aria-label="Close fleet details" onClick={close}><X /></Button></div>
+    <div className="mb-3 flex items-center justify-between"><h3 className="font-subheading text-base">{fleet.name}</h3><Button variant="ghost" size="icon" aria-label="Close fleet details" onClick={close}><X /></Button></div>
     <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
       {trucks.map(tr => <li key={tr.unit} className="rounded border border-border p-3 text-sm">
         <div className="flex items-center gap-2 font-mono"><Truck className="size-4 text-muted-foreground" />{tr.unit}{tr.status === 'Standby' && <span className="ml-auto rounded bg-ok/15 px-2 py-0.5 text-xs text-ok">Standby</span>}</div>
