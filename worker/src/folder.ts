@@ -1,5 +1,5 @@
 // Load a dataset folder (network.json, ops.json, telemetry.csv) from disk.
-// Only these three files are read. Never answer_key.json.
+// Only these three files are read; nothing else in the folder is opened.
 import { readFileSync, existsSync } from 'node:fs';
 import { join, resolve, basename } from 'node:path';
 import { buildModel, type DatasetModel } from '../../core/src/model';
