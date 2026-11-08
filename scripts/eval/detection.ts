@@ -81,10 +81,11 @@ export function scoreDetection(
   model: DatasetModel,
   grid: Grid,
   labels: AnswerKeyEvent[],
-  o: MatchOptions & { sweepStepSec: number },
+  o: MatchOptions & { sweepStepSec: number; detect?: (asOfUnix: number) => DetectedEvent[] },
 ): Attempt<DetectionScore> {
   const nowUnix = gridNow(grid);
-  const det = attempt(() => detectRules(model, grid, { asOfUnix: nowUnix }));
+  const detect = o.detect ?? ((asOfUnix: number) => detectRules(model, grid, { asOfUnix }));
+  const det = attempt(() => detect(nowUnix));
   if (!det.ok) return det;
   const detected = det.value;
   const matching = matchEvents(labels, detected, nowUnix, o);
@@ -108,7 +109,7 @@ export function scoreDetection(
     for (let asOf = startAt; asOf <= nowUnix && pending.size; asOf += o.sweepStepSec) {
       const relevant = [...pending].filter((i) => matching.matches[i].label.onsetUnix - o.tolSec <= asOf);
       if (!relevant.length) continue;
-      const r = attempt(() => detectRules(model, grid, { asOfUnix: asOf }));
+      const r = attempt(() => detect(asOf));
       calls++;
       if (!r.ok) {
         error = r.error;

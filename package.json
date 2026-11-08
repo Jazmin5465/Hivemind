@@ -20,7 +20,9 @@
     "status": "tsx worker/src/cli/status.ts",
     "flip": "bash scripts/flip-to-test.sh",
     "flip:drill": "bash scripts/flip-to-test.sh --drill",
-    "setup": "bash scripts/setup-local.sh"
+    "setup": "bash scripts/setup-local.sh",
+    "eval:ml": "tsx scripts/eval/ml_eval.ts",
+    "ml": "bash scripts/run-ml.sh"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
