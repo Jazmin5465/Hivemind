@@ -219,37 +219,50 @@ export function geoLayout(live: LiveData, schematicNodes: MapNode[], schematicEd
     }
   }
 
-  // system cards: try 8 directions, keep the one overlapping clusters / other cards / edges least
+  // system cards: try 16 directions x 4 distances; avoid nodes, routes, other cards, the inset and the edges.
+  // The leader line runs to the system's node nearest the card (not the cluster centre, which can be empty space).
+  const NODE_R = 24;
+  const allNodes = clusterPx.flatMap((k) => k.pts);
+  const routeDots = routes.flatMap((r) => {
+    const n = Math.max(1, Math.floor(Math.hypot(r.to.x - r.from.x, r.to.y - r.from.y) / 14));
+    return Array.from({ length: n + 1 }, (_, i) => ({ x: r.from.x + ((r.to.x - r.from.x) * i) / n, y: r.from.y + ((r.to.y - r.from.y) * i) / n }));
+  });
+  const ovW = 210;
+  const ovH = 140;
+  const inset = { x: 14, y: H - ovH - 14, w: ovW, h: ovH }; // the true-scale overview, drawn below
   const cards: SystemCard[] = [];
   for (const k of clusterPx) {
     let bestCard: SystemCard | null = null;
     let bestScore = Infinity;
     const outward = Math.atan2(k.c.y - H / 2, k.c.x - W / 2);
-    for (let a = 0; a < 16; a++) {
-      const ang = (a * Math.PI) / 8;
-      const dist = k.r + 30 + Math.max(CARD_W, CARD_H) / 2;
-      const cx = k.c.x + Math.cos(ang) * dist;
-      const cy = k.c.y + Math.sin(ang) * dist;
-      const card = { x: cx - CARD_W / 2, y: cy - CARD_H / 2, w: CARD_W, h: CARD_H };
-      let score = 0;
-      // overlaps dominate; the outward preference only breaks ties
-      for (const o of clusterPx) score += circleRectOverlap(o.c, o.r + 10, card) * 6;
-      for (const c of cards) score += rectOverlap({ x: card.x - 8, y: card.y - 8, w: card.w + 16, h: card.h + 16 }, c) * 20;
-      score += outOfBounds(card, W, H) * 20;
-      score += (1 - Math.cos(ang - outward)) * 15; // prefer pointing away from the middle
-      if (score < bestScore) {
-        bestScore = score;
-        const anchor = { x: k.c.x + Math.cos(ang) * (k.r + 6), y: k.c.y + Math.sin(ang) * (k.r + 6) };
-        bestCard = { system: k.sys, ...card, anchor, attach: rectEdgePoint(card, k.c) };
+    for (const dist of [70, 110, 160, 220]) {
+      for (let a = 0; a < 16; a++) {
+        const ang = (a * Math.PI) / 8;
+        const cx = k.c.x + Math.cos(ang) * dist;
+        const cy = k.c.y + Math.sin(ang) * dist;
+        const card = { x: cx - CARD_W / 2, y: cy - CARD_H / 2, w: CARD_W, h: CARD_H };
+        let score = 0;
+        for (const n of allNodes) score += circleRectOverlap(n, NODE_R, card) * 6;
+        for (const d of routeDots) score += circleRectOverlap(d, 6, card) * 3;
+        for (const c of cards) score += rectOverlap({ x: card.x - 8, y: card.y - 8, w: card.w + 16, h: card.h + 16 }, c) * 20;
+        score += rectOverlap({ x: inset.x - 8, y: inset.y - 8, w: inset.w + 16, h: inset.h + 16 }, card) * 20;
+        score += outOfBounds(card, W, H) * 20;
+        score += (1 - Math.cos(ang - outward)) * 15; // prefer pointing away from the middle
+        score += dist / 10; // and staying close to the cluster
+        if (score < bestScore) {
+          bestScore = score;
+          const near = k.pts.reduce((b, p) => (Math.hypot(p.x - cx, p.y - cy) < Math.hypot(b.x - cx, b.y - cy) ? p : b));
+          const len = Math.hypot(cx - near.x, cy - near.y) || 1;
+          const anchor = { x: near.x + ((cx - near.x) / len) * 14, y: near.y + ((cy - near.y) / len) * 14 };
+          bestCard = { system: k.sys, ...card, anchor, attach: rectEdgePoint(card, near) };
+        }
       }
     }
     if (bestCard) cards.push(bestCard);
   }
 
   // true-scale overview inset (bottom-left)
-  const ovW = 210;
-  const ovH = 140;
-  const ov = { x: 14, y: H - ovH - 14, w: ovW, h: ovH };
+  const ov = inset;
   const tx = [...P.values()].map((p) => p.x);
   const ty = [...P.values()].map((p) => p.y);
   const tMinX = Math.min(...tx);
