@@ -35,7 +35,7 @@ export interface CountdownOptions {
   pumpFlowBpd?: number;
   /** max points in the slope window (default 12 = 1 h on a 5-min grid) */
   windowSteps?: number;
-  /** max points used to de-noise the current level (default 36 = 3 h on a 5-min grid) */
+  /** max points used to de-noise the current level (default 72 = 6 h on a 5-min grid) */
   levelFitSteps?: number;
 }
 
@@ -68,7 +68,11 @@ export function countdownAt(
   const rate = ((inflow - pumpFlow) / 24 / fac.capacityBbl) * 100;
   const shutdown = model.shutdownPct;
   const alreadyTripped = Number.isFinite(levelRaw) && levelRaw >= shutdown - 0.05 && producing.length === 0;
-  const level = alreadyTripped ? levelRaw : denoisedLevel(grid, fac.tankId, idx, asOfUnix, rate, opts, levelRaw);
+  // Levels are reported (and planned from) at the answer key's precision, 0.1 percentage points:
+  // the de-noised estimate is far more precise than any single reading but not beyond that.
+  const level = alreadyTripped
+    ? levelRaw
+    : roundLevel(denoisedLevel(grid, fac, idx, asOfUnix, rate, opts, levelRaw, producing.length));
 
   // observed slope (least squares) over the recent window
   const win = opts.windowSteps ?? 12;
@@ -148,21 +152,29 @@ export function countdownAt(
  */
 function denoisedLevel(
   grid: Grid,
-  tankId: string,
+  fac: DatasetModel['facilities'][number],
   idx: number,
   asOfUnix: number,
   rate: number,
   opts: CountdownOptions,
   raw: number,
+  producingNow: number,
 ): number {
   if (opts.sinceUnix == null || !(rate > 0)) return raw;
-  const lv = gridGet(grid, tankId, 'level_pct');
+  const lv = gridGet(grid, fac.tankId, 'level_pct');
   if (!lv) return raw;
-  const maxPts = opts.levelFitSteps ?? 36;
+  const pump = gridGet(grid, fac.pumpId, 'status');
+  const wellStatus = fac.wells.map((w) => gridGet(grid, w.id, 'status'));
+  const producingAt = (j: number) =>
+    wellStatus.reduce((a, st) => a + (!st || !Number.isFinite(st[j]) || st[j] >= 0.5 ? 1 : 0), 0);
+  const maxPts = opts.levelFitSteps ?? 72;
   const resid: number[] = [];
   for (let j = idx; j >= 0 && resid.length < maxPts; j--) {
     const t = tsAt(grid, j);
-    if (t < opts.sinceUnix) break;
+    if (producingAt(j) !== producingNow) break; // inflow changed: different line
+    // Before the onset the tank is on the same line only while the pump was not moving water
+    // (stopped: same inflow, no outflow). Stop at the first step where it was running.
+    if (t < opts.sinceUnix && (!pump || !Number.isFinite(pump[j]) || pump[j] === 1)) break;
     if (!Number.isFinite(lv[j])) continue;
     resid.push(lv[j] - rate * ((t - asOfUnix) / 3600));
   }
@@ -206,4 +218,11 @@ function preOnsetFit(lv: Float64Array, grid: Grid, idx: number, raw: number, k =
   if (sd > 0.5 || Math.abs(est - raw) > Math.max(1, 4 * sd)) return raw;
   void grid;
   return est;
+}
+
+
+/** level precision used for countdowns and plans (the answer key's convention: 0.1 points) */
+export const LEVEL_PRECISION_PCT = 0.1;
+function roundLevel(v: number): number {
+  return Number.isFinite(v) ? Math.round(v / LEVEL_PRECISION_PCT) * LEVEL_PRECISION_PCT : v;
 }
