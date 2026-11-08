@@ -24,7 +24,8 @@
     "eval:ml": "tsx scripts/eval/ml_eval.ts",
     "ml": "bash scripts/run-ml.sh",
     "export:events": "tsx worker/src/cli/export-events.ts",
-    "eval:synth": "tsx scripts/eval/synth_eval.ts"
+    "eval:synth": "tsx scripts/eval/synth_eval.ts",
+    "smoke": "tsx worker/src/cli/smoke.ts"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
