@@ -123,8 +123,14 @@ function discoverFolders(root: string): string[] {
     .sort();
 }
 
-function main() {
-  const args = parseArgs(process.argv.slice(2));
+export interface EvalOutcome {
+  text: string;
+  exitCode: number;
+  summary: { total: number; pass: number; fail: number; na: number; flagged: number };
+}
+
+export function main(argv: string[], print: (s: string) => void = console.log): EvalOutcome {
+  const args = parseArgs(argv);
   const checks = new Checks();
   const out: string[] = [];
   const say = (s = '') => out.push(s);
@@ -308,7 +314,7 @@ function main() {
   const flags = L.filter((c) => c.flag);
   const bySection = new Map<string, { p: number; f: number; n: number }>();
   for (const c of L) {
-    const k = c.section.replace(/^.*:/, (m) => m); // keep "oracle:plan" etc.
+    const k = c.section;
     const v = bySection.get(k) ?? { p: 0, f: 0, n: 0 };
     if (c.pass === true) v.p++;
     else if (c.pass === false) v.f++;
@@ -317,20 +323,23 @@ function main() {
   }
   say(rule('TOTAL'));
   say(`  ${[...bySection].map(([k, v]) => `${k} ${v.p}/${v.p + v.f}${v.n ? ` (${v.n} N/A)` : ''}`).join(' · ')}`);
-  say(`  checks ${L.length}: ${pass} ✓  ${fail.length} ✗  ${na} N/A${flags.length ? ` · ${flags.length} better than reference? (review: ${flags.map((f) => `${f.folder.slice(0, 14)}:${f.name.split(' ')[0]}`).join(', ')})` : ''}`);
+  say(`  checks ${L.length}: ${pass} ✓  ${fail.length} ✗  ${na} N/A${flags.length ? ` · ${flags.length} cheaper than reference (review manually${args.verbose ? '' : ', --verbose lists them'})` : ''}`);
+  if (args.verbose) for (const f of flags) verbose(`    ? ${f.folder} ${f.section} ${f.name} (${f.detail ?? ''}): better than reference?`);
   if (args.verbose && fail.length) for (const f of fail) verbose(`    ✗ ${f.folder} ${f.section} ${f.name}${f.detail ? ` (${f.detail})` : ''}`);
 
-  console.log(out.join('\n'));
+  const text = out.join('\n');
+  print(text);
+  const summary = { total: L.length, pass, fail: fail.length, na, flagged: flags.length };
 
   if (args.json) {
     const replacer = (_k: string, v: unknown) => (v instanceof Map ? Object.fromEntries(v) : v);
     writeFileSync(
       args.json,
-      JSON.stringify({ generatedAt: new Date().toISOString(), dataRoot: args.data, args: { ...args, json: undefined }, folders: reports.map(slimReport), checks: L, summary: { total: L.length, pass, fail: fail.length, na, flagged: flags.length } }, replacer, 2),
+      JSON.stringify({ generatedAt: new Date().toISOString(), dataRoot: args.data, args: { ...args, json: undefined }, folders: reports.map(slimReport), checks: L, summary }, replacer, 2),
     );
-    console.log(`(json written to ${args.json})`);
+    print(`(json written to ${args.json})`);
   }
-  if (args.strict && fail.length) process.exit(1);
+  return { text, exitCode: args.strict && fail.length ? 1 : 0, summary };
 }
 
 /** Drop bulky fields (level traces, raw label JSON) from the JSON report. */
@@ -343,9 +352,12 @@ function slimReport(r: FolderReport) {
   );
 }
 
-try {
-  main();
-} catch (e) {
-  console.error(e instanceof Error ? e.message : e);
-  process.exit(2);
+const invokedDirectly = !!process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+if (invokedDirectly) {
+  try {
+    process.exitCode = main(process.argv.slice(2)).exitCode;
+  } catch (e) {
+    console.error(e instanceof Error ? e.message : e);
+    process.exitCode = 2;
+  }
 }
