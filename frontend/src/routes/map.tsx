@@ -1,10 +1,13 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Plus, Minus, RotateCcw, X } from "lucide-react";
+import { Plus, Minus, RotateCcw, X, Truck } from "lucide-react";
+import { useTick } from "@/hooks/use-countdown";
+import { hexPoints, type GeoModel } from "@/lib/live/geoLayout";
+import type { LiveData } from "@/lib/live/store";
 import { useLive } from "@/components/LiveProvider";
 import { PageBackdrop } from "@/components/PageBackdrop";
-import { formatTime, mapModel, nowOf, thresholdsOf, type MapNode, type SystemBox } from "@/lib/live/derive";
+import { effectiveNow, fleetTrucks, fleets as liveFleets, formatTime, mapModel, nowOf, thresholdsOf, type MapNode, type SystemBox } from "@/lib/live/derive";
 
 export const Route = createFileRoute("/map")({
   validateSearch: (s: Record<string, unknown>): { facility?: string | undefined } => ({ facility: typeof s["facility"] === "string" ? s["facility"] : undefined }),
@@ -27,8 +30,11 @@ const kindLabel = { facility: "FAC", tank: "TNK", pump: "PMP", disposal: "SWD", 
 function MapPage() {
   const { facility } = Route.useSearch();
   const live = useLive();
-  // layout sized from the live network (any number of systems / facilities)
-  const model = mapModel(live);
+  useTick(); // trucks move along their routes in real time
+  // layout sized from the live network (any number of systems / facilities); recomputed only on data changes
+  const model = useMemo(() => mapModel(live), [live]);
+  const geo = model.geo;
+  const now = effectiveNow(live);
   const { W, H, nodes: mapNodes, edges: mapEdges, boxes: systemBoxes, geoNodes, geoEdges } = model;
   const thresholds = thresholdsOf(live);
   const sizeRef = useRef({ W, H });
@@ -65,7 +71,10 @@ function MapPage() {
     setTab(id);
     if (id === "ALL" || mode === "geo") {
       if (mode === "geo" && id !== "ALL") {
-        const pts = geoNodes.filter((n) => n.system === id);
+        const pts = geoNodes.filter((n) => n.system === id).map((n) => ({ x: n.x, y: n.y }));
+        // keep the system's card in view too
+        const card = geo.cards.find((c) => c.system === id);
+        if (card) pts.push({ x: card.x, y: card.y }, { x: card.x + card.w, y: card.y + card.h });
         const xs = pts.map((n) => n.x), ys = pts.map((n) => n.y);
         const x0 = Math.min(...xs), y0 = Math.min(...ys);
         zoomToBox({ id, x: x0, y: y0, w: Math.max(...xs) - x0, h: Math.max(...ys) - y0, trucks: 0, health: "NORMAL" });
@@ -117,7 +126,7 @@ function MapPage() {
       <div className="flex flex-wrap items-end justify-between gap-2">
         <div>
           <h1 className="font-heading text-3xl tracking-[0.12em] text-heading-pink glow-magenta-soft md:text-4xl">NETWORK MAP</h1>
-          <p className="font-subheading text-sm text-muted-foreground">{tab === "ALL" ? "All systems" : `Isolated ${tab}`} · {mode === "geo" ? "GPS positions" : "schematic"} · Last updated: {live.ready ? formatTime(nowOf(live)) : "—"}</p>
+          <p className="font-subheading text-sm text-muted-foreground">{tab === "ALL" ? "All systems" : `Isolated ${tab}`} · {mode === "geo" ? "real layouts · spacing between systems compressed" : "schematic"} · Last updated: {live.ready ? formatTime(nowOf(live)) : "—"}</p>
         </div>
         <div className="flex gap-3 font-mono text-[10px] uppercase">
           <span className="text-primary">● Normal</span><span className="text-warning">● Warning</span><span className="text-destructive">● Failing</span>
@@ -161,12 +170,8 @@ function MapPage() {
           </defs>
           <rect width={W} height={H} fill="url(#grid)" />
           <g style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.k})`, transformOrigin: "0 0", transition: animate ? "transform 700ms cubic-bezier(0.65, 0, 0.35, 1)" : "none" }}>
-            {mode === "geo" && model.latTicks.map(({ value, y }) => (
-              <text key={value} x="8" y={y} fontSize="9" fontFamily="JetBrains Mono" fill="var(--muted-foreground)">{Math.abs(value)}°{value >= 0 ? "N" : "S"}</text>
-            ))}
-            {mode === "geo" && model.lonTicks.map(({ value, x }) => (
-              <text key={value} x={x} y={H - 8} textAnchor="middle" fontSize="9" fontFamily="JetBrains Mono" fill="var(--muted-foreground)">{Math.abs(value)}°{value >= 0 ? "E" : "W"}</text>
-            ))}
+            {mode === "geo" && <GeoHoneycomb geo={geo} tab={tab} />}
+            {mode === "geo" && <GeoRoutes geo={geo} tab={tab} />}
             {mode === "schematic" && systemBoxes.filter((b) => tab === "ALL" || b.id === tab).map((b) => (
               <g key={b.id}>
                 <rect x={b.x} y={b.y} width={b.w} height={b.h} rx="10" fill="oklch(0.17 0.03 290 / 0.88)" stroke={b.health === "CRITICAL" ? "var(--destructive)" : "var(--primary)"} strokeWidth="1" opacity="0.9" filter="url(#glow)" />
@@ -204,7 +209,10 @@ function MapPage() {
                 <text y="34" textAnchor="middle" fontSize="8" fontFamily="JetBrains Mono" fill="var(--foreground)">{n.label}</text>
               </g>
             ))}
+            {mode === "geo" && <GeoTrucks geo={geo} live={live} now={now} tab={tab} />}
+            {mode === "geo" && <GeoCards geo={geo} live={live} now={now} tab={tab} />}
           </g>
+          {mode === "geo" && <GeoOverview geo={geo} />}
         </svg>
         <div className="absolute right-3 top-3 flex flex-col gap-1">
           {[{ i: Plus, f: 1.3, l: "Zoom in" }, { i: Minus, f: 1 / 1.3, l: "Zoom out" }].map(({ i: I, f, l }) => (
@@ -240,4 +248,90 @@ function MapPage() {
     </main>
     </>
   );
+}
+
+/** Honeycomb: every cell near a system glows in its colour (pulsing red if a pump there has failed). */
+function GeoHoneycomb({ geo, tab }: { geo: GeoModel; tab: string }) {
+  return <g aria-hidden>
+    {geo.hexes.map((h, i) => {
+      const own = h.system !== null && (tab === "ALL" || h.system === tab);
+      const color = h.failing ? "var(--destructive)" : h.system ? geo.systemColor[h.system] : "var(--primary)";
+      return <polygon key={i} points={hexPoints(h.cx, h.cy, geo.hexR - 1)}
+        fill={own ? color : "none"} fillOpacity={own ? 0.04 + 0.2 * h.intensity : 0}
+        stroke={own ? color : "var(--primary)"} strokeOpacity={own ? 0.18 + 0.4 * h.intensity : 0.07} strokeWidth="1"
+        className={own && h.failing && h.intensity > 0.25 ? "animate-pulse-glow" : undefined} />;
+    })}
+  </g>;
+}
+
+/** Truck routes: each system's truck yard to each of its facilities. */
+function GeoRoutes({ geo, tab }: { geo: GeoModel; tab: string }) {
+  return <g aria-hidden>
+    {geo.routes.filter((r) => tab === "ALL" || r.system === tab).map((r) => (
+      <line key={r.id} x1={r.from.x} y1={r.from.y} x2={r.to.x} y2={r.to.y} stroke={geo.systemColor[r.system]} strokeOpacity="0.45" strokeWidth="1.2" strokeDasharray="2 5" />
+    ))}
+  </g>;
+}
+
+/** Dispatched trucks (approved plans) moving yard -> facility; hauling trucks pulse at the facility. */
+function GeoTrucks({ geo, live, now, tab }: { geo: GeoModel; live: LiveData; now: number; tab: string }) {
+  const trucks = liveFleets(live).filter((f) => tab === "ALL" || f.id === tab).flatMap((f) =>
+    fleetTrucks(live, f, now).filter((t) => t.status !== "Standby").map((t) => ({ ...t, system: f.id })));
+  return <g>
+    {trucks.map((t, i) => {
+      const r = geo.routes.find((x) => x.facilityId === t.facility);
+      if (!r) return null;
+      const span = Math.max(1, (t.eta ?? now) - (t.dispatch ?? now));
+      const frac = t.status === "En route" ? Math.min(1, Math.max(0, (now - (t.dispatch ?? now)) / span)) : 1;
+      const x = r.from.x + (r.to.x - r.from.x) * frac;
+      const y = r.from.y + (r.to.y - r.from.y) * frac;
+      const off = t.status === "Hauling" ? (i % 2 ? 10 : -10) : 0;
+      return <g key={t.unit} transform={`translate(${x + off} ${y - 16})`} className={t.status === "Hauling" ? "animate-pulse-glow" : undefined} style={{ transition: "transform 1s linear" }}>
+        <title>{`${t.unit} · ${t.status} · ${t.facility}`}</title>
+        <circle r="11" fill="var(--background)" stroke="var(--accent)" strokeWidth="1.5" filter="url(#glow)" />
+        <Truck x={-7} y={-7} width={14} height={14} color="var(--accent)" />
+      </g>;
+    })}
+  </g>;
+}
+
+/** One card per system (alerts, trucks free, revenue at risk), linked to its cluster. */
+function GeoCards({ geo, live, now, tab }: { geo: GeoModel; live: LiveData; now: number; tab: string }) {
+  const fleets = liveFleets(live);
+  const usd = (v: number) => `$${Math.round(v).toLocaleString("en-US")}`;
+  return <g>
+    {geo.cards.filter((c) => tab === "ALL" || c.system === tab).map((c) => {
+      const ongoing = live.events.filter((e) => e.systemId === c.system && e.status === "ongoing");
+      const failures = ongoing.filter((e) => e.category === "pump_failure");
+      const atRisk = failures.reduce((a, e) => a + e.lostRevenuePerHour, 0);
+      const fleet = fleets.find((f) => f.id === c.system);
+      const free = fleet ? fleetTrucks(live, fleet, now).filter((t) => t.status === "Standby").length : 0;
+      const color = failures.length ? "var(--destructive)" : geo.systemColor[c.system];
+      const k = 14; // corner cut: flat-sided hexagon card
+      const pts = `${c.x + k},${c.y} ${c.x + c.w - k},${c.y} ${c.x + c.w},${c.y + c.h / 2} ${c.x + c.w - k},${c.y + c.h} ${c.x + k},${c.y + c.h} ${c.x},${c.y + c.h / 2}`;
+      return <g key={c.system}>
+        <line x1={c.attach.x} y1={c.attach.y} x2={c.anchor.x} y2={c.anchor.y} stroke={color} strokeOpacity="0.6" strokeWidth="1" />
+        <circle cx={c.anchor.x} cy={c.anchor.y} r="2.5" fill={color} />
+        <polygon points={pts} fill="oklch(0.17 0.03 290 / 0.92)" stroke={color} strokeWidth="1.2" filter="url(#glow)" />
+        <text x={c.x + c.w / 2} y={c.y + 20} textAnchor="middle" fontSize="12" fontWeight="bold" fontFamily="JetBrains Mono" fill={color}>SYSTEM {c.system}</text>
+        <text x={c.x + c.w / 2} y={c.y + 37} textAnchor="middle" fontSize="9.5" fontFamily="JetBrains Mono" fill={ongoing.length ? "var(--destructive)" : "var(--ok)"}>{ongoing.length ? `${ongoing.length} alert${ongoing.length > 1 ? "s" : ""}` : "All clear"}</text>
+        <text x={c.x + c.w / 2} y={c.y + 52} textAnchor="middle" fontSize="9.5" fontFamily="JetBrains Mono" fill="var(--muted-foreground)">{free}/{fleet?.trucks ?? 0} trucks free</text>
+        <text x={c.x + c.w / 2} y={c.y + 67} textAnchor="middle" fontSize="9.5" fontFamily="JetBrains Mono" fill={atRisk ? "var(--warning)" : "var(--muted-foreground)"}>{atRisk ? `${usd(atRisk)}/h at risk` : "No revenue at risk"}</text>
+      </g>;
+    })}
+  </g>;
+}
+
+/** True-scale overview (fixed in the corner, not affected by zoom). */
+function GeoOverview({ geo }: { geo: GeoModel }) {
+  const o = geo.overview;
+  if (!o.w) return null;
+  return <g aria-label="True-scale overview">
+    <rect x={o.x} y={o.y} width={o.w} height={o.h} rx="6" fill="oklch(0.15 0.03 290 / 0.92)" stroke="var(--border)" />
+    <text x={o.x + 8} y={o.y + 13} fontSize="8.5" fontFamily="JetBrains Mono" fill="var(--muted-foreground)">TRUE SCALE{geo.compression < 0.99 ? ` · map spacing ×${geo.compression.toFixed(2)}` : ""}</text>
+    {o.dots.map((d, i) => d.kind === "yard"
+      ? <rect key={i} x={d.x - 2} y={d.y - 2} width="4" height="4" fill="none" stroke={geo.systemColor[d.system]} strokeWidth="0.8" />
+      : <circle key={i} cx={d.x} cy={d.y} r={d.kind === "disposal" ? 1.8 : 2.4} fill={d.status === "fail" ? "var(--destructive)" : d.status === "warn" ? "var(--warning)" : geo.systemColor[d.system]} />)}
+    {o.labels.map((l) => <text key={l.system} x={l.x} y={l.y - 7} textAnchor="middle" fontSize="8" fontFamily="JetBrains Mono" fill={geo.systemColor[l.system]}>{l.system}</text>)}
+  </g>;
 }

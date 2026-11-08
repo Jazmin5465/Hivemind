@@ -3,6 +3,7 @@
 // file only maps rows to display shapes (plus real-time ticking between backend updates).
 import type { Decision, Event, Facility, Plan, PlanFacility } from '@/module_bindings/types';
 import type { LiveData } from './store';
+import { geoLayout, type GeoModel } from './geoLayout';
 
 export type Severity = 'critical' | 'high' | 'medium';
 export type Category = 'pump_failure' | 'pump_degradation' | 'pipeline_leak' | 'tank_fill';
@@ -494,9 +495,8 @@ export interface MapModel {
   boxes: SystemBox[];
   geoNodes: MapNode[];
   geoEdges: MapEdge[];
-  /** geographic axis ticks (lat/lon labels positioned in map coordinates) */
-  latTicks: { value: number; y: number }[];
-  lonTicks: { value: number; x: number }[];
+  /** beehive geographic view: compressed geography, honeycomb, truck routes, system cards, overview */
+  geo: GeoModel;
 }
 
 /** Map layout. The canvas grows with the number of systems/facilities (any network shape). */
@@ -547,52 +547,8 @@ export function mapModel(live: LiveData): MapModel {
     });
   });
 
-  // Geographic view: equirectangular projection fitted to this network's own coordinates.
-  const lats = [...live.facilities.map((f) => f.lat), ...live.systems.flatMap((s) => [s.disposalLat, s.yardLat])];
-  const lons = [...live.facilities.map((f) => f.lon), ...live.systems.flatMap((s) => [s.disposalLon, s.yardLon])];
-  const pad = 60;
-  const latMin = lats.length ? Math.min(...lats) : 0;
-  const latMax = lats.length ? Math.max(...lats) : 1;
-  const lonMin = lons.length ? Math.min(...lons) : 0;
-  const lonMax = lons.length ? Math.max(...lons) : 1;
-  const kx = (W - 2 * pad) / Math.max(1e-6, lonMax - lonMin);
-  const ky = (H - 2 * pad) / Math.max(1e-6, latMax - latMin);
-  const k = Math.min(kx, ky);
-  const gx = (lon: number) => pad + (lon - lonMin) * k;
-  const gy = (lat: number) => pad + (latMax - lat) * k;
-  const geoNodes: MapNode[] = [];
-  const geoEdges: MapEdge[] = [];
-  for (const system of live.systems) {
-    const swd = nodes.find((n) => n.id === system.disposalId);
-    if (swd) geoNodes.push({ ...swd, x: gx(system.disposalLon), y: gy(system.disposalLat) });
-    const trucks = live.opsSystems.find((o) => o.systemId === system.systemId)?.fleetSize ?? 0;
-    geoNodes.push({ id: `${system.systemId}_TRUCK_YARD`, label: `${system.systemId} YARD`, kind: 'yard', x: gx(system.yardLon), y: gy(system.yardLat), status: 'ok', detail: `${trucks} trucks · ${system.yardLat}, ${system.yardLon}`, system: system.systemId });
-    for (const f of live.facilities.filter((x) => x.systemId === system.systemId)) {
-      const fac = nodes.find((n) => n.id === f.facilityId);
-      const pump = nodes.find((n) => n.id === f.pumpId);
-      if (fac) geoNodes.push({ ...fac, x: gx(f.lon), y: gy(f.lat), status: pump && pump.status !== 'ok' ? pump.status : fac.status });
-      const pipe = edges.find((e) => e.id === f.pipelineId);
-      geoEdges.push({ id: f.pipelineId, from: f.facilityId, to: system.disposalId, failing: pipe?.failing ?? false, system: system.systemId });
-    }
-  }
-  const ticks = (lo: number, hi: number) => {
-    const span = hi - lo;
-    const step = span > 2 ? 1 : span > 1 ? 0.5 : span > 0.4 ? 0.25 : 0.1;
-    const out: number[] = [];
-    for (let v = Math.ceil(lo / step) * step; v <= hi + 1e-9; v += step) out.push(Math.round(v * 100) / 100);
-    return out;
-  };
-  return {
-    W,
-    H,
-    nodes,
-    edges,
-    boxes,
-    geoNodes,
-    geoEdges,
-    latTicks: ticks(latMin, latMax).map((value) => ({ value, y: gy(value) })),
-    lonTicks: ticks(lonMin, lonMax).map((value) => ({ value, x: gx(value) })),
-  };
+  const geo = geoLayout(live, nodes, edges, W, H);
+  return { W, H, nodes, edges, boxes, geoNodes: geo.nodes, geoEdges: geo.edges, geo };
 }
 
 export const headerSummary = (live: LiveData) => ({ now: nowOf(live), alerts: ongoingEvents(live).length });

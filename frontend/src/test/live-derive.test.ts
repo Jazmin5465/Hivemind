@@ -207,7 +207,7 @@ describe('network map', () => {
       expect(n.y).toBeGreaterThanOrEqual(0);
       expect(n.y).toBeLessThanOrEqual(m.H);
     }
-    expect(m.latTicks.length).toBeGreaterThan(0);
+    expect(m.geo.cards).toHaveLength(6);
   });
 
   it('marks failing pumps and leaking pipelines from backend events', () => {
