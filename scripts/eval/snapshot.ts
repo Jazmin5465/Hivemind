@@ -81,7 +81,7 @@ function runMode(
   tol: Tolerances,
 ): SnapshotModeResult {
   const nowUnix = gridNow(grid);
-  const cds = new Map(cases.map((c) => [c.key, attempt(() => countdownAt(model, grid, c.facilityId, nowUnix))]));
+  const cds = new Map(cases.map((c) => [c.key, attempt(() => countdownAt(model, grid, c.facilityId, nowUnix, { sinceUnix: c.onsetUnix }))]));
 
   // Alert order over our ongoing items.
   const cdOk = [...cds.values()].every((a) => a.ok);

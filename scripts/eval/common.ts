@@ -1,3 +1,4 @@
+import { countdownAt } from '../../core/src/countdown';
 // Shared helpers for the eval harness.
 import type { DatasetModel } from '../../core/src/model';
 import { gridGet, idxAtOrBefore, tsAt, type Grid } from '../../core/src/telemetry';
@@ -46,6 +47,17 @@ export function tankLevelAt(model: DatasetModel, grid: Grid, facilityId: string,
   if (!s) return null;
   for (let i = idxAtOrBefore(grid, t); i >= 0; i--) if (!Number.isNaN(s[i])) return s[i];
   return null;
+}
+
+/** Level the app would plan from: countdownAt's de-noised estimate, else the raw reading. */
+export function plannedLevelAt(model: DatasetModel, grid: Grid, facilityId: string, t: number, onsetUnix: number): number | null {
+  try {
+    const v = countdownAt(model, grid, facilityId, t, { sinceUnix: onsetUnix }).levelPct;
+    if (Number.isFinite(v)) return v;
+  } catch {
+    /* countdown not available */
+  }
+  return tankLevelAt(model, grid, facilityId, t);
 }
 
 export const gridNow = (g: Grid) => tsAt(g, g.n - 1);

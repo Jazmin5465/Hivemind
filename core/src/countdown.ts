@@ -166,10 +166,44 @@ function denoisedLevel(
     if (!Number.isFinite(lv[j])) continue;
     resid.push(lv[j] - rate * ((t - asOfUnix) / 3600));
   }
-  if (resid.length < 3) return raw;
+  if (resid.length < 3) return preOnsetFit(lv, grid, idx, raw);
   const est = resid.reduce((a, b) => a + b, 0) / resid.length;
   const sd = Math.sqrt(resid.reduce((a, b) => a + (b - est) ** 2, 0) / (resid.length - 1));
   // points far off the line => physics assumption broken; trust the raw reading
   if (Math.abs(est - raw) > Math.max(1, 4 * sd)) return raw;
+  return est;
+}
+
+/**
+ * Right at a failure's onset there are no points since onset yet. Fit a free line through the
+ * last few readings (the tank was on one straight segment of its sawtooth) and evaluate it at
+ * idx. Rejected (raw reading used) if the points don't lie on one line, e.g. a pump switch.
+ */
+function preOnsetFit(lv: Float64Array, grid: Grid, idx: number, raw: number, k = 6): number {
+  const xs: number[] = [];
+  const ys: number[] = [];
+  for (let j = idx; j >= 0 && xs.length < k; j--) {
+    if (!Number.isFinite(lv[j])) continue;
+    xs.push(j - idx);
+    ys.push(lv[j]);
+  }
+  if (xs.length < 4) return raw;
+  const n = xs.length;
+  const mx = xs.reduce((a, b) => a + b, 0) / n;
+  const my = ys.reduce((a, b) => a + b, 0) / n;
+  let sxx = 0;
+  let sxy = 0;
+  for (let i = 0; i < n; i++) {
+    sxx += (xs[i] - mx) ** 2;
+    sxy += (xs[i] - mx) * (ys[i] - my);
+  }
+  if (sxx === 0) return raw;
+  const b = sxy / sxx;
+  let sse = 0;
+  for (let i = 0; i < n; i++) sse += (ys[i] - (my + b * (xs[i] - mx))) ** 2;
+  const sd = Math.sqrt(sse / (n - 2));
+  const est = my + b * (0 - mx);
+  if (sd > 0.5 || Math.abs(est - raw) > Math.max(1, 4 * sd)) return raw;
+  void grid;
   return est;
 }

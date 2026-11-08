@@ -6,7 +6,7 @@ import type { Grid } from '../../core/src/telemetry';
 import type { PlanAction } from '../../core/src/types';
 import { planSystem, type FacilityPlan, type SystemPlan } from '../../core/src/planner';
 import type { AnswerKeyEvent, ReferenceAction } from './answerKey';
-import { attempt, tankLevelAt, type Attempt } from './common';
+import { attempt, tankLevelAt, plannedLevelAt, type Attempt } from './common';
 import { costCheck } from './snapshot';
 
 export type BusySource = 'ours' | 'ref';
@@ -66,7 +66,7 @@ export function replayFullWeek(model: DatasetModel, grid: Grid, labels: AnswerKe
   for (const label of pumps) {
     const fleetSize = model.systemById.get(label.system)?.fleetSize ?? 0;
     const busy = (busyBySystem.get(label.system) ?? []).filter((t) => t > label.onsetUnix);
-    const tel = tankLevelAt(model, grid, label.facility, label.onsetUnix);
+    const tel = plannedLevelAt(model, grid, label.facility, label.onsetUnix, label.onsetUnix);
     const levelPct = tel ?? label.levelPct;
     const plan = attempt(() =>
       planSystem({
@@ -117,7 +117,7 @@ export function replayFullWeek(model: DatasetModel, grid: Grid, labels: AnswerKe
   let sanity: Sanity | null = null;
   const ex = pumps.find((l) => l.reference.kind === 'truck' && l.reference.trucks === 1 && l.reference.tripsPerTruck === 1 && l.reference.trucksFree == null);
   if (ex) {
-    const level = tankLevelAt(model, grid, ex.facility, ex.onsetUnix) ?? ex.levelPct ?? 0;
+    const level = plannedLevelAt(model, grid, ex.facility, ex.onsetUnix, ex.onsetUnix) ?? ex.levelPct ?? 0;
     const input = {
       model,
       systemId: ex.system,
