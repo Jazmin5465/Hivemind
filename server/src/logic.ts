@@ -379,9 +379,8 @@ function writeDetectorEvidence(ctx: Ctx, datasetId: string, eventId: string, sou
   const same = rows.length === texts.length && rows.every((r) => texts[r.rank - 1] === r.text && r.source === source);
   if (same) return;
   for (const r of rows) ctx.db.eventEvidence.id.delete(r.id);
-  const shapCount = [...ctx.db.eventEvidence.eventId.filter(eventId)].length;
   texts.forEach((text, i) =>
-    ctx.db.eventEvidence.insert({ id: 0n, eventId, datasetId, rank: i + 1 + (source === 'shap' ? 0 : shapCount > 0 ? 0 : 0), text, source, feature: '', contribution: 0 }),
+    ctx.db.eventEvidence.insert({ id: 0n, eventId, datasetId, rank: i + 1, text, source, feature: '', contribution: 0 }),
   );
 }
 
@@ -403,6 +402,7 @@ export function deleteDatasetRows(ctx: Ctx, datasetId: string, keepClockAndColla
   delAll(ctx.db.whatifRequest.datasetId.filter(datasetId), (r) => ctx.db.whatifRequest.requestId.delete(r.requestId));
   delAll(ctx.db.whatifResult.datasetId.filter(datasetId), (r) => ctx.db.whatifResult.requestId.delete(r.requestId));
   delAll(ctx.db.injectedFailure.datasetId.filter(datasetId), (r) => ctx.db.injectedFailure.id.delete(r.id));
+  delAll(ctx.db.fleetSweep.datasetId.filter(datasetId), (r) => ctx.db.fleetSweep.key.delete(r.key));
   ctx.db.opsConfig.datasetId.delete(datasetId);
   ctx.db.datasetRaw.datasetId.delete(datasetId);
   ctx.db.mlStatus.datasetId.delete(datasetId);

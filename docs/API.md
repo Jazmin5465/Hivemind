@@ -57,6 +57,7 @@ conn.subscriptionBuilder().subscribe([
   `SELECT * FROM whatif_result WHERE dataset_id = '${ds}'`,
   `SELECT * FROM ml_status`,
   `SELECT * FROM injected_failure WHERE dataset_id = '${ds}'`,
+  `SELECT * FROM fleet_sweep WHERE dataset_id = '${ds}'`,
 ]);
 ```
 
@@ -162,6 +163,9 @@ When the ML sidecar has run, there are also per-step probabilities: `ml_p_failur
 
 **`whatif_request`** and **`whatif_result`** (PK `requestId`): `whatif_result` has `status` (`done` | `error`), `error`, `planId?` (the what-if plan), `baselinePlanId?`, `totalCost`, `baselineCost`, `deltaCost`. Match a result to your request through `whatif_request.requestedBy` = your identity (the newest row).
 
+**`fleet_sweep`** (PK `key`): the "how big should the fleet be?" analysis, filled by `runFleetSweep`.
+`systemId`, `fleetSize`, `isCurrent` (the fleet size from ops.json), `failures`, `totalCost` (the week's response cost with that fleet), `trips` (failures that still trip), `truckTrips`, `wellsShutIn`, `asOfUnix`.
+
 ### Multiplayer
 
 **`operator`** (PK `identity`): `name`, `role` (`operator` | `agent`), `online`, `connections`, `lastSeen`. Use it for presence.
@@ -199,7 +203,9 @@ Use the camelCase TS name, for example `conn.reducers.approvePlan({ planId })`. 
 | `setName` | `name` | operator display name |
 | `askAgent` | `datasetId, text` | natural-language question; the agent answers in `agent_question` |
 | `injectFailure` | `datasetId, facilityId, levelPct?, onsetUnix?` | live-demo pump failure. Defaults: now, at the tank's current level. |
+| `injectSystemOutage` | `datasetId, systemId` | demo: every pump in the system fails now (e.g. "the disposal site shuts down"); planned jointly |
 | `clearInjected` | `datasetId` | removes all overlays |
+| `runFleetSweep` | `datasetId` | fills `fleet_sweep`: the week's pump failures replayed for fleet sizes 0..current+2 |
 
 `overrides` (`PlanOverrides`), with every field optional: `{ fleetSize?, repairHours?, extraRepairHours?, truckCapacityBbl?, costPerTrip?, lockedWells?: string[], noTrucks?: boolean }`.
 Examples:
@@ -217,4 +223,5 @@ Worker-only reducers (`loadDataset*`, `ml*`, `agent*`, `registerWorker`, `setWor
 - **Demo:** `injectFailure(ds, 'S1_FACILITY_A')` creates a new ongoing failure with a countdown and a plan within one transaction.
 
 ## Changelog
+- v1.1 (2026-11-07 23:30): + `fleet_sweep` table, `runFleetSweep`, `injectSystemOutage`.
 - v1 (2026-11-07 23:00): first version.

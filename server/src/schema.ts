@@ -517,6 +517,24 @@ const mlStatus = table(
   },
 );
 
+/** "How big should the fleet be?" — replay of the week's pump failures per fleet size (run_fleet_sweep). */
+const fleetSweep = table(
+  { name: 'fleet_sweep', public: true },
+  {
+    key: t.string().primaryKey(), // `${datasetId}/${systemId}/${fleetSize}`
+    datasetId: t.string().index('btree'),
+    systemId: t.string(),
+    fleetSize: t.u32(),
+    isCurrent: t.bool(),
+    failures: t.u32(),
+    totalCost: t.f64(),
+    trips: t.u32(), // failures whose tank still trips
+    truckTrips: t.u32(),
+    wellsShutIn: t.u32(),
+    asOfUnix: t.u32(),
+  },
+);
+
 // ---------- private auth ----------
 const admin = table(
   { name: 'admin' },
@@ -563,6 +581,7 @@ const spacetimedb = schema({
   agentQuestion,
   dispatchMessage,
   mlStatus,
+  fleetSweep,
   admin,
   workerKey,
 });

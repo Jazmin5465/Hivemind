@@ -23,6 +23,8 @@ import { buildModel } from '../../core/src/model';
 import { countdownAt } from '../../core/src/countdown';
 import { planSystem, type FailureInput, type PlanOverrides as CorePlanOverrides } from '../../core/src/planner';
 import { validatePlan } from '../../core/src/validate';
+import { analyze } from '../../core/src/analyze';
+import { fleetSweep } from '../../core/src/fleetSweep';
 import type { PlanAction } from '../../core/src/types';
 
 export default spacetimedb;
@@ -283,6 +285,34 @@ export const injectFailure = spacetimedb.reducer(
     recompute(ctx, datasetId);
   },
 );
+
+/** Demo: every pump in a system fails at once (e.g. "what if the disposal site shuts down?"). */
+export const injectSystemOutage = spacetimedb.reducer({ datasetId: t.string(), systemId: t.string() }, (ctx, { datasetId, systemId }) => {
+  requireReady(ctx, datasetId);
+  const { model, grid } = getData(ctx, datasetId);
+  const sys = model.systemById.get(systemId);
+  if (!sys) throw new SenderError(`unknown system ${systemId}`);
+  const clock = ctx.db.simClock.datasetId.find(datasetId)!;
+  for (const fid of sys.facilityIds) {
+    const level = countdownAt(model, grid, fid, clock.nowUnix).levelPctRaw;
+    if (!Number.isFinite(level) || level >= model.shutdownPct) continue;
+    ctx.db.injectedFailure.insert({ id: 0n, datasetId, facilityId: fid, onsetUnix: clock.nowUnix, levelPct: level, createdBy: ctx.sender, createdAt: ctx.timestamp });
+  }
+  recompute(ctx, datasetId);
+});
+
+/** Fleet sizing: replay every pump failure detected up to the clock for fleet sizes 0..current+2. */
+export const runFleetSweep = spacetimedb.reducer({ datasetId: t.string() }, (ctx, { datasetId }) => {
+  requireReady(ctx, datasetId);
+  const { model, grid } = getData(ctx, datasetId);
+  const clock = ctx.db.simClock.datasetId.find(datasetId)!;
+  const injected = [...ctx.db.injectedFailure.datasetId.filter(datasetId)].map((r) => ({ facilityId: r.facilityId, onsetUnix: r.onsetUnix, levelPct: r.levelPct }));
+  const out = analyze({ model, grid, asOfUnix: clock.nowUnix, injected, skipPlans: true });
+  const rows = fleetSweep(model, grid, out.events.filter((e) => e.source !== 'injected'), { asOfUnix: clock.nowUnix });
+  for (const r of [...ctx.db.fleetSweep.datasetId.filter(datasetId)]) ctx.db.fleetSweep.key.delete(r.key);
+  for (const r of rows)
+    ctx.db.fleetSweep.insert({ key: `${datasetId}/${r.systemId}/${r.fleetSize}`, datasetId, ...r, asOfUnix: clock.nowUnix });
+});
 
 export const clearInjected = spacetimedb.reducer({ datasetId: t.string() }, (ctx, { datasetId }) => {
   requireDataset(ctx, datasetId);

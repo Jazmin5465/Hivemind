@@ -211,6 +211,21 @@ export const FacilityState = __t.object("FacilityState", {
 });
 export type FacilityState = __Infer<typeof FacilityState>;
 
+export const FleetSweep = __t.object("FleetSweep", {
+  key: __t.string(),
+  datasetId: __t.string(),
+  systemId: __t.string(),
+  fleetSize: __t.u32(),
+  isCurrent: __t.bool(),
+  failures: __t.u32(),
+  totalCost: __t.f64(),
+  trips: __t.u32(),
+  truckTrips: __t.u32(),
+  wellsShutIn: __t.u32(),
+  asOfUnix: __t.u32(),
+});
+export type FleetSweep = __Infer<typeof FleetSweep>;
+
 export const Handoff = __t.object("Handoff", {
   id: __t.u64(),
   datasetId: __t.string(),

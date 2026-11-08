@@ -49,6 +49,7 @@ import ClearInjectedReducer from "./clear_injected_reducer";
 import ComputePlanReducer from "./compute_plan_reducer";
 import DeleteDatasetReducer from "./delete_dataset_reducer";
 import InjectFailureReducer from "./inject_failure_reducer";
+import InjectSystemOutageReducer from "./inject_system_outage_reducer";
 import LoadDatasetBeginReducer from "./load_dataset_begin_reducer";
 import LoadDatasetChunkReducer from "./load_dataset_chunk_reducer";
 import LoadDatasetEndReducer from "./load_dataset_end_reducer";
@@ -66,6 +67,7 @@ import RejectPlanReducer from "./reject_plan_reducer";
 import ReleaseEventReducer from "./release_event_reducer";
 import RequestWhatifReducer from "./request_whatif_reducer";
 import ResetClockReducer from "./reset_clock_reducer";
+import RunFleetSweepReducer from "./run_fleet_sweep_reducer";
 import SetActiveDatasetReducer from "./set_active_dataset_reducer";
 import SetClockReducer from "./set_clock_reducer";
 import SetNameReducer from "./set_name_reducer";
@@ -84,6 +86,7 @@ import EventRow from "./event_table";
 import EventEvidenceRow from "./event_evidence_table";
 import FacilityRow from "./facility_table";
 import FacilityStateRow from "./facility_state_table";
+import FleetSweepRow from "./fleet_sweep_table";
 import HandoffRow from "./handoff_table";
 import InjectedFailureRow from "./injected_failure_table";
 import MlStatusRow from "./ml_status_table";
@@ -245,6 +248,20 @@ const tablesSchema = __schema({
       { name: 'facility_state_key_key', constraint: 'unique', columns: ['key'] },
     ],
   }, FacilityStateRow),
+  fleetSweep: __table({
+    name: 'fleet_sweep',
+    indexes: [
+      { accessor: 'datasetId', name: 'fleet_sweep_dataset_id_idx_btree', algorithm: 'btree', columns: [
+        'datasetId',
+      ] },
+      { accessor: 'key', name: 'fleet_sweep_key_idx_btree', algorithm: 'btree', columns: [
+        'key',
+      ] },
+    ],
+    constraints: [
+      { name: 'fleet_sweep_key_key', constraint: 'unique', columns: ['key'] },
+    ],
+  }, FleetSweepRow),
   handoff: __table({
     name: 'handoff',
     indexes: [
@@ -480,6 +497,7 @@ const reducersSchema = __reducers(
   __reducerSchema("compute_plan", ComputePlanReducer),
   __reducerSchema("delete_dataset", DeleteDatasetReducer),
   __reducerSchema("inject_failure", InjectFailureReducer),
+  __reducerSchema("inject_system_outage", InjectSystemOutageReducer),
   __reducerSchema("load_dataset_begin", LoadDatasetBeginReducer),
   __reducerSchema("load_dataset_chunk", LoadDatasetChunkReducer),
   __reducerSchema("load_dataset_end", LoadDatasetEndReducer),
@@ -497,6 +515,7 @@ const reducersSchema = __reducers(
   __reducerSchema("release_event", ReleaseEventReducer),
   __reducerSchema("request_whatif", RequestWhatifReducer),
   __reducerSchema("reset_clock", ResetClockReducer),
+  __reducerSchema("run_fleet_sweep", RunFleetSweepReducer),
   __reducerSchema("set_active_dataset", SetActiveDatasetReducer),
   __reducerSchema("set_clock", SetClockReducer),
   __reducerSchema("set_name", SetNameReducer),
