@@ -13,3 +13,4 @@ __pycache__/
 /ml_contract.md
 .spacetime/
 scripts/eval/out/
+.claude/
