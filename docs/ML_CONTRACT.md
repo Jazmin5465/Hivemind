@@ -77,6 +77,49 @@ Implementation details:
 - Extra response fields (ignorable): `assetId`, `category`, `evaluatedAtUnix`, `probability` (the model's probability for that category at that step).
 - Every number in `text` is computed from the dataset's own values for that step. Example output for a failed pump: `"The pump is in fault"`; for a leak: `"Pipeline pressure at the disposal end bottomed at 48 psi below normal over 6 hours"`, `"Water reaching the disposal site was 93.8% of what the pump sent (last 2 hours of running)"`.
 
+## POST /fixes and POST /fixes/all
+
+Several costed ways to fix each ongoing event. The spec is in `ml/PLAN.md` ("Fixing predicted events").
+
+**Where the numbers come from.** Events come from the LightGBM detector (ongoing runs of probability > 0.5: 15 min for a failure, 30 min for a leak or worn pump, dips of up to 30 min joined). Pump-failure costs come from the backend's own planner: `ml/fixes/bridge.ts` runs `core/src/countdown.ts` and `core/src/planner.ts` in a long-lived Node process, so the costs are the same as the console's plans. **Node and `npm install` are needed** wherever this service runs.
+
+Request (`/fixes`):
+```json
+{ "datasetDir": "<absolute path>", "asOfUnix": 1791460800,
+  "eventId": "pump_failure:S2_PUMP_B:1791450000",
+  "overrides": { "fleetSize": 1 }, "maxFixes": 4 }
+```
+- `eventId` uses the backend's format `category:assetId:onsetUnix`. If the onset differs by a few minutes, the same category and asset still match. Instead of `eventId` you can send `assetId` (a pump, pipeline or facility id).
+- `asOfUnix` is optional (default: the last `ts_unix`). Only data up to it is used.
+- `overrides` (optional) are the backend's `PlanOverrides`: `fleetSize`, `repairHours`, `extraRepairHours`, `truckCapacityBbl`, `costPerTrip`, `lockedWells`, `noTrucks`. Use them for what-ifs.
+
+Response: exactly this shape (no other fields):
+```json
+{ "eventId": "...", "fixes": [ { "fixDescription": "...", "predictedSequence": ["<UTC time> - <what happens>"],
+  "cost": 905, "costReasoning": "..." } ] }
+```
+
+What the fixes are:
+
+| Event | Fixes, in this order |
+|---|---|
+| Pump failure that will trip | 1. **Recommended**: this tank's part of the cheapest joint plan for the whole system (all failing tanks share the trucks). 2. Cheapest **trucks only**. 3. Cheapest **shut-in only**. 4. **Do nothing** (automatic trip). 2 to 4 hold the other tanks at their recommended plans, so they only use trucks left over. Alternatives with no trucks free, or identical to another fix, are left out. Alternatives are sorted by cost. |
+| Pump failure that never trips before the repair | One fix: "No action needed", cost 0 |
+| Tank already at the shutdown limit | One fix: wait for the repair; cost is the remaining lost revenue |
+| Leak or worn pump | 1. Send an inspector now. 2. No action yet (monitor), with a projection of the trend measured on that asset. Both cost 0, which means **unpriced**: `ops.json` has no inspection price. |
+
+`predictedSequence` lists, oldest first: truck arrivals and the bbl removed, wells shut in, the tank crossing the warning level (to the nearest 5 minutes, marked "about"), the tank reaching the shutdown limit, the repair finishing, and trucks returning to the yard. `costReasoning` writes out the formula with its inputs and ends with `Total: $X.`, which always equals `cost`.
+
+`POST /fixes/all` takes `datasetDir`, `asOfUnix`, `overrides`, `maxFixes` and returns `{ "asOfUnix", "events": [...], "results": [ <one /fixes response per event> ] }`.
+
+Errors: 400 for an unknown event or asset or an unknown override key, as `{ "error": "..." }`.
+
+**Measured** (this machine): first call about 1.8 s (starts the Node bridge and runs the detector), then about 0.03 s per event and 0.5 s for `/fixes/all` with 6 events.
+
+**Tested** (`python ml/tests/test_fixes.py`, reads answer keys for checking only): every response matches the schema; for all 7 ongoing pump failures in the three snapshots the recommended cost equals the answer key's reference cost, including the shared-truck systems ($905 / $1,298.33 / $905 in S2 at 10-08 12:00; $1,810 in S4 at 10-09 03:30; $905 / $1,215 / $975.31 in S4 at 10-10 09:00); every `costReasoning` total equals its `cost`.
+
+Known limit: a leak only shows while the pump runs, so after a repair the detector can keep a leak "ongoing" until the pump runs again. The backend's rules detector behaves the same way at 10-10 09:00.
+
 ## Errors
 
 4xx/5xx with `{ "error": "<message>" }`. The backend falls back to its own rules detector when the service is down or errors, so failing loudly is fine.

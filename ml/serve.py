@@ -22,6 +22,7 @@ from fastapi.responses import Response
 from pydantic import BaseModel
 
 import detector
+import fixes_service
 
 app = FastAPI(title="Hivemind ML sidecar")
 
@@ -34,6 +35,23 @@ def _json(obj, status=200):
 class DetectReq(BaseModel):
     datasetDir: str
     asOfUnix: Optional[int] = None
+
+
+class FixesReq(BaseModel):
+    datasetDir: str
+    asOfUnix: Optional[int] = None
+    eventId: Optional[str] = None      # "pump_failure:S2_PUMP_B:1791450000" (same format as the backend)
+    assetId: Optional[str] = None      # or a pump / pipeline / facility id
+    overrides: Optional[dict] = None   # fleetSize, repairHours, extraRepairHours, truckCapacityBbl,
+                                       # costPerTrip, lockedWells, noTrucks
+    maxFixes: int = 4
+
+
+class FixesAllReq(BaseModel):
+    datasetDir: str
+    asOfUnix: Optional[int] = None
+    overrides: Optional[dict] = None
+    maxFixes: int = 4
 
 
 class ExplainReq(BaseModel):
@@ -55,6 +73,11 @@ async def _validation(_: Request, exc: RequestValidationError):
 
 @app.exception_handler(detector.DatasetError)
 async def _dataset(_: Request, exc):
+    return _err(exc, 400)
+
+
+@app.exception_handler(fixes_service.FixesError)
+async def _fixes(_: Request, exc):
     return _err(exc, 400)
 
 
@@ -80,6 +103,24 @@ def detect(req: DetectReq):
 @app.post("/explain")
 def explain(req: ExplainReq):
     return _json(detector.explain(req.datasetDir, req.assetId, req.category, req.onsetUnix, req.asOfUnix))
+
+
+@app.post("/fixes")
+def fixes(req: FixesReq):
+    """Several costed ways to fix one ongoing event. Response matches the fixes schema exactly."""
+    return _json(fixes_service.fixes_for(req.datasetDir, req.asOfUnix, req.eventId, req.assetId,
+                                         req.overrides, req.maxFixes))
+
+
+@app.post("/fixes/all")
+def fixes_all(req: FixesAllReq):
+    """Every ongoing event at "now": the events list plus one fixes object per event."""
+    return _json(fixes_service.fixes_all(req.datasetDir, req.asOfUnix, req.overrides, req.maxFixes))
+
+
+@app.on_event("shutdown")
+def _close_bridge():
+    fixes_service.bridge.close()
 
 
 if __name__ == "__main__":

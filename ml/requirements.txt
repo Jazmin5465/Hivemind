@@ -6,3 +6,4 @@ pandas>=2.0
 numpy>=1.26
 scikit-learn>=1.3   # training metrics only
 httpx>=0.27         # tests only
+jsonschema>=4.0      # tests only

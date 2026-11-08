@@ -216,7 +216,7 @@ How each field is filled (all by code, not by the LLM):
 
 **Open item:** the schema has no machine-readable plan, but `approve_plan` and the module's re-validation need trucks, trips, wells and start times. Proposal: a sibling `POST /fixes/plans` with the same request, returning the same fixes in the same order as structured actions (`dispatch_truck`, `shut_in_wells`, `field_inspection`, `none`, the shape in SPEC.md's `events.json`). Needs a yes from the backend side.
 
-**Decided:** the planner and `/fixes` are implemented once, by the backend in `core/` (TypeScript), where the backend spec already puts the countdown and planner. The Python sidecar holds only the detector (`/health`, `/detect`, `/explain`) and does not duplicate the planner. This section is the specification for that implementation; the tests below are its acceptance checks.
+**Decided (updated):** `/fixes` is served by the FastAPI sidecar (`ml/serve.py`, `ml/fixes_service.py`), but the planning math is not duplicated: `ml/fixes/bridge.ts` calls the backend's own `core/` countdown and planner, so costs match the console exactly. Python picks the events (LightGBM), builds the alternatives, the predicted sequence and the cost reasoning. See `docs/ML_CONTRACT.md`.
 
 What the Python side hands over:
 - The detector's events, through `/detect` (the backend groups them into events).
