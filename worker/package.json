@@ -1,0 +1,10 @@
+{
+  "name": "hivemind-worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "dotenv": "^16.4.7",
+    "spacetimedb": "2.14.1"
+  }
+}

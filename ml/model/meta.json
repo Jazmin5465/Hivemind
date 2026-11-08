@@ -1,0 +1,89 @@
+{
+ "modelVersion": "lgbm-synth-fc09a1e5",
+ "trainedOn": "synthetic: 40 simulated weeks (32 train, 8 validation), simulator calibrated on full_week",
+ "classes": [
+  "normal",
+  "pipeline_leak",
+  "pump_degradation",
+  "pump_failure"
+ ],
+ "features": [
+  "pump_status",
+  "pump_fault",
+  "pump_running",
+  "status_hours",
+  "level_pct",
+  "level_to_limit",
+  "level_to_warning",
+  "level_noise",
+  "level_slope_30m",
+  "level_slope_2h",
+  "level_slope_6h",
+  "level_slope_24h",
+  "well_frac_now",
+  "wells_on_frac",
+  "wells_on_frac_6h",
+  "flow_age_h",
+  "flow_mean_30m",
+  "flow_mean_2h",
+  "flow_chg_2h",
+  "flow_mean_6h",
+  "flow_chg_6h",
+  "flow_mean_24h",
+  "flow_chg_24h",
+  "flow_carried",
+  "flow_min_6h",
+  "ratio_age_h",
+  "ratio_mean_30m",
+  "ratio_mean_2h",
+  "ratio_chg_2h",
+  "ratio_mean_6h",
+  "ratio_chg_6h",
+  "ratio_mean_24h",
+  "ratio_chg_24h",
+  "ratio_carried",
+  "ratio_min_6h",
+  "pipe_age_h",
+  "pipe_mean_30m",
+  "pipe_mean_2h",
+  "pipe_chg_2h",
+  "pipe_mean_6h",
+  "pipe_chg_6h",
+  "pipe_mean_24h",
+  "pipe_chg_24h",
+  "pipe_carried",
+  "pipe_min_6h",
+  "dis_age_h",
+  "dis_mean_30m",
+  "dis_mean_2h",
+  "dis_chg_2h",
+  "dis_mean_6h",
+  "dis_chg_6h",
+  "dis_mean_24h",
+  "dis_chg_24h",
+  "dis_carried",
+  "dis_min_6h",
+  "ratio_std_2h",
+  "off_press_dev_2h",
+  "loss_pipe_vs_pump"
+ ],
+ "bestIteration": 111,
+ "valPerClass": {
+  "normal": {
+   "precision": 0.9937790723222076,
+   "recall": 0.9982407354860677
+  },
+  "pipeline_leak": {
+   "precision": 0.9665469665469666,
+   "recall": 0.9726131608976797
+  },
+  "pump_degradation": {
+   "precision": 0.9871277132761231,
+   "recall": 0.90229553581728
+  },
+  "pump_failure": {
+   "precision": 1.0,
+   "recall": 1.0
+  }
+ }
+}

@@ -1,0 +1,37 @@
+{
+  "name": "hivemind",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "server",
+    "worker"
+  ],
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "data:fetch": "bash scripts/fetch-data.sh",
+    "data:load": "tsx worker/src/cli/load.ts",
+    "server:publish": "spacetime publish hivemind --server local --module-path server --yes",
+    "server:generate": "spacetime generate --lang typescript --out-dir frontend/src/module_bindings --module-path server && spacetime generate --lang typescript --out-dir worker/src/module_bindings --module-path server",
+    "eval": "tsx scripts/eval/run.ts",
+    "worker": "tsx worker/src/main.ts",
+    "check:answer-key": "bash scripts/check-answer-key.sh",
+    "status": "tsx worker/src/cli/status.ts",
+    "flip": "bash scripts/flip-to-test.sh",
+    "flip:drill": "bash scripts/flip-to-test.sh --drill",
+    "setup": "bash scripts/setup-local.sh",
+    "eval:ml": "tsx scripts/eval/ml_eval.ts",
+    "ml": "bash scripts/run-ml.sh",
+    "export:events": "tsx worker/src/cli/export-events.ts",
+    "eval:synth": "tsx scripts/eval/synth_eval.ts",
+    "smoke": "tsx worker/src/cli/smoke.ts",
+    "agent": "tsx worker/src/cli/agent.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "tsx": "^4.19.2",
+    "typescript": "~5.6.2",
+    "vitest": "^2.1.8"
+  }
+}
