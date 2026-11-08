@@ -114,6 +114,7 @@ function scanFacility(s: FacilitySeries, last: number): RawEvent[] {
   const fac = s.fac;
 
   let failure: RawEvent | null = null;
+  let prevRunning = false;
 
   // Leak state
   const leakUp = new Cusum(LEAK.K, LEAK.ONSET_LEVEL);
@@ -151,7 +152,10 @@ function scanFacility(s: FacilitySeries, last: number): RawEvent[] {
       failure.endIdx = i;
       failure = null;
     }
-    if (st !== PUMP_RUNNING) continue; // pump off: leaks/wear invisible, carry state
+    if (st !== PUMP_RUNNING) {
+      prevRunning = false;
+      continue; // pump off: leaks/wear invisible, carry state
+    }
 
     // ---- pipeline_leak ------------------------------------------------------------------
     const { zP, zR } = leakZ(s, i);
@@ -193,13 +197,15 @@ function scanFacility(s: FacilitySeries, last: number): RawEvent[] {
       const z = (clip(zF, DEG.Z_CLIP) + clip(zD, DEG.Z_CLIP)) / Math.SQRT2;
       degWin.push(i, zF, zD);
       if (!deg) {
+        // A small noise excursion shouldn't be carried across a pump-off gap: re-arm.
+        if (!prevRunning && degUp.s < DEG.CARRY_MIN) degUp.reset();
         degUp.update(z, i);
         if (degUp.s >= DEG.H && degWin.meanA() >= DEG.MIN_MEAN_Z_FLOW && degWin.full()) {
           deg = {
             category: 'pump_degradation',
             facility: fac,
             assetId: fac.pumpId,
-            onsetIdx: degUp.startIdx ?? i,
+            onsetIdx: estimateRampOnset(s, degUp.startIdx ?? i, i),
             detectIdx: i,
             endIdx: null,
             peakScore: degWin.meanCombined(),
@@ -218,8 +224,43 @@ function scanFacility(s: FacilitySeries, last: number): RawEvent[] {
         }
       }
     }
+    prevRunning = true;
   }
   return events;
+}
+
+/**
+ * Degradation is a ramp that starts at zero, so the CUSUM start lags the true onset.
+ * Fit a line to the combined z of running steps [start, detect] and take its zero crossing,
+ * bounded below by the last running step before the excursion (the pump looked healthy then)
+ * and above by the CUSUM start. Uses only data <= detect.
+ */
+function estimateRampOnset(s: FacilitySeries, start: number, detect: number): number {
+  let lo = 0;
+  for (let j = start - 1; j >= 0; j--) {
+    if (s.status[j] === PUMP_RUNNING) {
+      lo = j + 1;
+      break;
+    }
+  }
+  let n = 0, sx = 0, sy = 0, sxx = 0, sxy = 0;
+  for (let j = start; j <= detect; j++) {
+    if (s.status[j] !== PUMP_RUNNING) continue;
+    const { zF, zD } = degZ(s, j);
+    if (!Number.isFinite(zF) || !Number.isFinite(zD)) continue;
+    const y = (clip(zF, DEG.Z_CLIP) + clip(zD, DEG.Z_CLIP)) / Math.SQRT2;
+    n++;
+    sx += j;
+    sy += y;
+    sxx += j * j;
+    sxy += j * y;
+  }
+  const den = n * sxx - sx * sx;
+  if (n < 3 || den <= 0) return start;
+  const slope = (n * sxy - sx * sy) / den;
+  if (slope <= 0) return start;
+  const x0 = sx / n - sy / n / slope;
+  return Math.max(lo, Math.min(start, Math.round(x0)));
 }
 
 function clip(x: number, c: number) {

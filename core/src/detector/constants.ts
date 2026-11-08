@@ -60,6 +60,8 @@ export const DEG = {
   K: 0.5,
   /** Alarm level of the CUSUM. */
   H: 14,
+  /** At a pump restart, a pending CUSUM below this is treated as noise and re-armed. */
+  CARRY_MIN: 4,
   /** Flow itself must be down on the confirmation window (a worn pump "moves less water"). */
   MIN_MEAN_Z_FLOW: 1,
   CONFIRM_WINDOW_STEPS: 12,
