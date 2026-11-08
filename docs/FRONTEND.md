@@ -3,7 +3,7 @@
 This file covers what data the backend produces, which screen it belongs on, and which reducer each button calls. It leaves out layout and styling.
 
 - **`docs/API.md`** has every column, the connection code and the subscription queries.
-- **Bindings** are generated in `client/src/module_bindings`, on the `backend` branch.
+- **Bindings** are generated in `frontend/src/module_bindings`.
 - **Naming:** TypeScript uses camelCase (`row.hoursToLimitP50`). SQL subscription strings use snake_case (`hours_to_limit_p_50`).
 
 ## Rules for every screen

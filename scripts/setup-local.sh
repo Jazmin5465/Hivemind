@@ -29,6 +29,6 @@ else
 fi
 spacetime call "$DB" --server local set_worker_key "\"$KEY\"" >/dev/null
 echo "worker key set"
-spacetime generate --lang typescript --out-dir client/src/module_bindings --module-path server >/dev/null
+spacetime generate --lang typescript --out-dir frontend/src/module_bindings --module-path server >/dev/null
 spacetime generate --lang typescript --out-dir worker/src/module_bindings --module-path server >/dev/null
-echo "bindings generated (client/src/module_bindings, worker/src/module_bindings)"
+echo "bindings generated (frontend/src/module_bindings, worker/src/module_bindings)"

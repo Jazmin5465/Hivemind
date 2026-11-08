@@ -181,6 +181,7 @@ export const loadDatasetEnd = spacetimedb.reducer(
     dropCache(a.datasetId);
     if (a.activate) activate(ctx, a.datasetId);
     recompute(ctx, a.datasetId);
+    fleetSweepRows(ctx, a.datasetId); // the fleet panel's long-term recommendation reads this
   },
 );
 
@@ -304,6 +305,10 @@ export const injectSystemOutage = spacetimedb.reducer({ datasetId: t.string(), s
 /** Fleet sizing: replay every pump failure detected up to the clock for fleet sizes 0..current+2. */
 export const runFleetSweep = spacetimedb.reducer({ datasetId: t.string() }, (ctx, { datasetId }) => {
   requireReady(ctx, datasetId);
+  fleetSweepRows(ctx, datasetId);
+});
+
+function fleetSweepRows(ctx: Ctx, datasetId: string) {
   const { model, grid } = getData(ctx, datasetId);
   const clock = ctx.db.simClock.datasetId.find(datasetId)!;
   const injected = [...ctx.db.injectedFailure.datasetId.filter(datasetId)].map((r) => ({ facilityId: r.facilityId, onsetUnix: r.onsetUnix, levelPct: r.levelPct }));
@@ -312,7 +317,7 @@ export const runFleetSweep = spacetimedb.reducer({ datasetId: t.string() }, (ctx
   for (const r of [...ctx.db.fleetSweep.datasetId.filter(datasetId)]) ctx.db.fleetSweep.key.delete(r.key);
   for (const r of rows)
     ctx.db.fleetSweep.insert({ key: `${datasetId}/${r.systemId}/${r.fleetSize}`, datasetId, ...r, asOfUnix: clock.nowUnix });
-});
+}
 
 export const clearInjected = spacetimedb.reducer({ datasetId: t.string() }, (ctx, { datasetId }) => {
   requireDataset(ctx, datasetId);
@@ -423,6 +428,7 @@ function revalidate(ctx: Ctx, planId: bigint) {
 export const approvePlan = spacetimedb.reducer({ planId: t.u64() }, (ctx, { planId }) => {
   const { p, v } = revalidate(ctx, planId);
   if (p.status === 'approved') return;
+  if (p.scenarioFacilityId) throw new SenderError('this plan is for a hypothetical failure; use select_contingency');
   if (!v.valid) {
     ctx.db.plan.planId.update({ ...p, valid: false, validationErrors: v.errors });
     throw new SenderError(`plan ${planId} is not valid: ${v.errors.join('; ')}`);
@@ -432,6 +438,7 @@ export const approvePlan = spacetimedb.reducer({ planId: t.u64() }, (ctx, { plan
   const dup = p.eventIds.filter((id) => others.includes(id));
   if (dup.length) throw new SenderError(`events already have an approved plan: ${dup.join(', ')}`);
   ctx.db.plan.planId.update({ ...p, status: 'approved', valid: true, validationErrors: [], approvedBy: ctx.sender, approvedAt: ctx.timestamp });
+  logPlanDecisions(ctx, p.planId, 'plan');
   for (const o of [...ctx.db.plan.datasetId.filter(p.datasetId)]) {
     if (o.planId === planId || o.status !== 'proposed' || o.origin === 'planner') continue;
     if (o.eventIds.some((id) => p.eventIds.includes(id))) ctx.db.plan.planId.update({ ...o, status: 'superseded' });
@@ -443,7 +450,8 @@ export const rejectPlan = spacetimedb.reducer({ planId: t.u64(), reason: t.strin
   const p = ctx.db.plan.planId.find(planId);
   if (!p) throw new SenderError(`unknown plan ${planId}`);
   if (p.status === 'approved') {
-    // un-approve: trucks are released and events get re-planned
+    // un-approve: trucks are released, events get re-planned, the decision is revoked
+    revokeDecisions(ctx, (d) => d.planId === planId);
     ctx.db.plan.planId.update({ ...p, status: 'rejected', rationale: reason ? `${p.rationale} | rejected: ${reason}` : p.rationale });
     recompute(ctx, p.datasetId);
     return;
@@ -455,6 +463,147 @@ export const rejectPlan = spacetimedb.reducer({ planId: t.u64(), reason: t.strin
 export const prunePlans = spacetimedb.reducer({ datasetId: t.string() }, (ctx, { datasetId }) => {
   for (const p of [...ctx.db.plan.datasetId.filter(datasetId)]) {
     if (p.status === 'rejected' || p.status === 'superseded' || p.origin === 'whatif') deletePlan(ctx, p.planId);
+  }
+});
+
+const OPTION_LABEL: Record<string, string> = {
+  optimal: 'Optimal plan',
+  shut_in_only: 'Shut in wells',
+  trucks_only: 'Send trucks',
+  do_nothing: 'Do nothing',
+};
+
+/** One decision row per event in the plan, with that facility's cost. */
+function logPlanDecisions(ctx: Ctx, planId: bigint, kind: 'plan' | 'contingency') {
+  const p = ctx.db.plan.planId.find(planId)!;
+  const clock = ctx.db.simClock.datasetId.find(p.datasetId);
+  const facs = [...ctx.db.planFacility.planId.filter(planId)];
+  const optionKey = p.optionKey || p.origin;
+  const label = OPTION_LABEL[optionKey] ?? (p.origin === 'agent' ? 'Agent plan' : 'Plan');
+  for (const f of facs) {
+    const others = facs.length - 1;
+    ctx.db.decision.insert({
+      id: 0n,
+      datasetId: p.datasetId,
+      eventId: f.eventId,
+      systemId: p.systemId,
+      facilityId: f.facilityId,
+      kind,
+      optionKey,
+      planId,
+      title: `${f.facilityId} · ${label}`,
+      detail: `${kind === 'contingency' ? 'Contingency if the pump fails (not a live dispatch). ' : ''}${f.summary}${others ? ` · joint ${p.systemId} plan with ${others} other failure${others > 1 ? 's' : ''}` : ''}`,
+      estimatedCost: f.cost,
+      status: 'active',
+      decidedBy: ctx.sender,
+      operatorName: operatorName(ctx, ctx.sender),
+      asOfUnix: clock?.nowUnix ?? p.planStartUnix,
+      createdAt: ctx.timestamp,
+    });
+  }
+}
+
+function revokeDecisions(ctx: Ctx, match: (d: { planId: bigint | undefined; eventId: string; kind: string; facilityId: string }) => boolean) {
+  for (const d of [...ctx.db.decision.iter()]) if (d.status === 'active' && match(d)) ctx.db.decision.id.update({ ...d, status: 'revoked' });
+}
+
+/**
+ * The decision popup's options for a system: the optimal joint plan and three alternatives
+ * (shut-in only, trucks only, do nothing), all from the exact planner. With `facilityId`, plans a
+ * hypothetical "this pump fails now" (contingency) instead; nothing is injected as a live alert.
+ * Replaces this operator's earlier options for the same system.
+ */
+export const requestPlanOptions = spacetimedb.reducer(
+  { datasetId: t.string(), systemId: t.string(), facilityId: t.option(t.string()) },
+  (ctx, { datasetId, systemId, facilityId }) => {
+    requireReady(ctx, datasetId);
+    for (const o of [...ctx.db.plan.datasetId.filter(datasetId)]) {
+      if (o.origin === 'option' && o.status === 'proposed' && o.systemId === systemId && o.createdBy.isEqual(ctx.sender)) deletePlan(ctx, o.planId);
+    }
+    let failures: FailureInput[];
+    let levels: Map<string, { levelPct: number; alreadyTripped: boolean; wellsOff: string[] }>;
+    let busy: number[];
+    let now: number;
+    const { model, grid } = getData(ctx, datasetId);
+    if (facilityId) {
+      const fac = model.facilityById.get(facilityId);
+      if (!fac || fac.systemId !== systemId) throw new SenderError(`${facilityId} is not a facility in ${systemId}`);
+      const clock = ctx.db.simClock.datasetId.find(datasetId)!;
+      now = clock.nowUnix;
+      const cd = countdownAt(model, grid, facilityId, now);
+      const prod = new Set(cd.producingWells);
+      const wellsOff = fac.wells.filter((w) => !prod.has(w.id)).map((w) => w.id);
+      const eventId = `${datasetId}:contingency:${facilityId}:${now}`;
+      failures = [{ eventId, facilityId, levelPct: cd.levelPct, repairEndUnix: now + model.repairHoursPumpFailure * 3600, alreadyTripped: cd.alreadyTripped, wellsOff }];
+      levels = new Map([[eventId, { levelPct: cd.levelPct, alreadyTripped: cd.alreadyTripped, wellsOff }]]);
+      busy = committedPlans(ctx, datasetId).filter((c) => c.systemId === systemId && c.planStartUnix <= now).flatMap((c) => c.truckFreeAtUnix);
+    } else {
+      const sf = systemFailures(ctx, datasetId, systemId);
+      if (!sf.failures.length) throw new SenderError(`no unplanned ongoing pump failures in ${systemId}`);
+      ({ failures, levels, busy, now } = sf);
+    }
+    const allWells = failures.flatMap((f) => model.facilityById.get(f.facilityId)!.wells.map((w) => w.id));
+    const variants: [string, CorePlanOverrides | undefined][] = [
+      ['optimal', undefined],
+      ['shut_in_only', { noTrucks: true }],
+      ['trucks_only', { lockedWells: allWells }],
+      ['do_nothing', { noTrucks: true, lockedWells: allWells }],
+    ];
+    for (const [key, o] of variants) {
+      const sp = planSystem({ model, systemId, nowUnix: now, failures, overrides: o, busyTruckFreeAtUnix: busy });
+      writePlan(ctx, datasetId, sp, { origin: 'option', status: 'proposed', rationale: OPTION_LABEL[key], overrides: o, optionKey: key, scenarioFacilityId: facilityId ?? '' }, levels);
+    }
+  },
+);
+
+/** Record the plan an operator picked for a hypothetical failure (no trucks are committed). */
+export const selectContingency = spacetimedb.reducer({ planId: t.u64() }, (ctx, { planId }) => {
+  const p = ctx.db.plan.planId.find(planId);
+  if (!p) throw new SenderError(`unknown plan ${planId}`);
+  if (!p.scenarioFacilityId) throw new SenderError('not a contingency plan; use approve_plan');
+  const dup = [...ctx.db.decision.datasetId.filter(p.datasetId)].find((d) => d.status === 'active' && d.kind === 'contingency' && d.facilityId === p.scenarioFacilityId);
+  if (dup) throw new SenderError(`a contingency was already chosen for ${p.scenarioFacilityId} by ${dup.operatorName}`);
+  ctx.db.plan.planId.update({ ...p, status: 'contingency', approvedBy: ctx.sender, approvedAt: ctx.timestamp });
+  logPlanDecisions(ctx, planId, 'contingency');
+});
+
+/** Leak or worn pump: record that an inspector was sent. */
+export const sendInspector = spacetimedb.reducer({ eventId: t.string(), note: t.string() }, (ctx, { eventId, note }) => {
+  const e = ctx.db.event.eventId.find(eventId);
+  if (!e) throw new SenderError(`unknown event ${eventId}`);
+  if (e.action !== 'field_inspection') throw new SenderError('pump failures need a plan, not an inspection');
+  const dup = [...ctx.db.decision.eventId.filter(eventId)].find((d) => d.status === 'active');
+  if (dup) throw new SenderError(`already decided by ${dup.operatorName}`);
+  const clock = ctx.db.simClock.datasetId.find(e.datasetId);
+  ctx.db.decision.insert({
+    id: 0n,
+    datasetId: e.datasetId,
+    eventId,
+    systemId: e.systemId,
+    facilityId: e.facilityId,
+    kind: 'inspection',
+    optionKey: 'inspect',
+    planId: undefined,
+    title: `${e.facilityId} · Send inspector`,
+    detail: `${e.category === 'pipeline_leak' ? 'Urgent leak inspection' : 'Inspect worn pump'} at ${e.assetId}${note ? ` · ${note}` : ''}`,
+    estimatedCost: 0,
+    status: 'active',
+    decidedBy: ctx.sender,
+    operatorName: operatorName(ctx, ctx.sender),
+    asOfUnix: clock?.nowUnix ?? 0,
+    createdAt: ctx.timestamp,
+  });
+});
+
+/** Undo a decision (inspection or contingency). Plan approvals are undone with reject_plan. */
+export const revokeDecision = spacetimedb.reducer({ id: t.u64() }, (ctx, { id }) => {
+  const d = ctx.db.decision.id.find(id);
+  if (!d) throw new SenderError(`unknown decision ${id}`);
+  if (d.kind === 'plan') throw new SenderError('use reject_plan to undo a plan approval');
+  ctx.db.decision.id.update({ ...d, status: 'revoked' });
+  if (d.kind === 'contingency' && d.planId != null) {
+    const p = ctx.db.plan.planId.find(d.planId);
+    if (p) ctx.db.plan.planId.update({ ...p, status: 'rejected' });
   }
 });
 

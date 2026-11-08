@@ -318,6 +318,10 @@ const plan = table(
     approvedAt: t.option(t.timestamp()),
     agentRunId: t.option(t.string()),
     searchMs: t.u32(),
+    /** request_plan_options: 'optimal' | 'shut_in_only' | 'trucks_only' | 'do_nothing'; '' otherwise */
+    optionKey: t.string().default(''),
+    /** request_plan_options for a hypothetical failure: the facility whose pump is assumed to fail now */
+    scenarioFacilityId: t.string().default(''),
   },
 );
 
@@ -503,6 +507,32 @@ const dispatchMessage = table(
   },
 );
 
+/** Shared log of operator decisions (queue, timeline and fleet status read it). */
+const decision = table(
+  { name: 'decision', public: true },
+  {
+    id: t.u64().primaryKey().autoInc(),
+    datasetId: t.string().index('btree'),
+    eventId: t.string().index('btree'), // event decided on ('' never; contingency uses its scenario id)
+    systemId: t.string(),
+    facilityId: t.string(),
+    /** 'plan' (plan approved) | 'inspection' (inspector sent) | 'contingency' (plan picked for a hypothetical failure) */
+    kind: t.string(),
+    /** plan option chosen: 'optimal' | 'shut_in_only' | 'trucks_only' | 'do_nothing' | 'planner' | 'agent' | ... | 'inspect' */
+    optionKey: t.string(),
+    planId: t.option(t.u64()),
+    title: t.string(),
+    detail: t.string(),
+    /** cost of the chosen plan for this facility (0 for inspections) */
+    estimatedCost: t.f64(),
+    status: t.string(), // active | revoked
+    decidedBy: t.identity(),
+    operatorName: t.string(),
+    asOfUnix: t.u32(), // sim clock when decided
+    createdAt: t.timestamp(),
+  },
+);
+
 /** ML sidecar status per dataset (written by the worker). */
 const mlStatus = table(
   { name: 'ml_status', public: true },
@@ -580,6 +610,7 @@ const spacetimedb = schema({
   agentStep,
   agentQuestion,
   dispatchMessage,
+  decision,
   mlStatus,
   fleetSweep,
   admin,

@@ -65,9 +65,13 @@ import RecomputeEventsReducer from "./recompute_events_reducer";
 import RegisterWorkerReducer from "./register_worker_reducer";
 import RejectPlanReducer from "./reject_plan_reducer";
 import ReleaseEventReducer from "./release_event_reducer";
+import RequestPlanOptionsReducer from "./request_plan_options_reducer";
 import RequestWhatifReducer from "./request_whatif_reducer";
 import ResetClockReducer from "./reset_clock_reducer";
+import RevokeDecisionReducer from "./revoke_decision_reducer";
 import RunFleetSweepReducer from "./run_fleet_sweep_reducer";
+import SelectContingencyReducer from "./select_contingency_reducer";
+import SendInspectorReducer from "./send_inspector_reducer";
 import SetActiveDatasetReducer from "./set_active_dataset_reducer";
 import SetClockReducer from "./set_clock_reducer";
 import SetNameReducer from "./set_name_reducer";
@@ -81,6 +85,7 @@ import AgentRunRow from "./agent_run_table";
 import AgentStepRow from "./agent_step_table";
 import ClaimRow from "./claim_table";
 import DatasetRow from "./dataset_table";
+import DecisionRow from "./decision_table";
 import DispatchMessageRow from "./dispatch_message_table";
 import EventRow from "./event_table";
 import EventEvidenceRow from "./event_evidence_table";
@@ -175,6 +180,23 @@ const tablesSchema = __schema({
       { name: 'dataset_dataset_id_key', constraint: 'unique', columns: ['datasetId'] },
     ],
   }, DatasetRow),
+  decision: __table({
+    name: 'decision',
+    indexes: [
+      { accessor: 'datasetId', name: 'decision_dataset_id_idx_btree', algorithm: 'btree', columns: [
+        'datasetId',
+      ] },
+      { accessor: 'eventId', name: 'decision_event_id_idx_btree', algorithm: 'btree', columns: [
+        'eventId',
+      ] },
+      { accessor: 'id', name: 'decision_id_idx_btree', algorithm: 'btree', columns: [
+        'id',
+      ] },
+    ],
+    constraints: [
+      { name: 'decision_id_key', constraint: 'unique', columns: ['id'] },
+    ],
+  }, DecisionRow),
   dispatchMessage: __table({
     name: 'dispatch_message',
     indexes: [
@@ -513,9 +535,13 @@ const reducersSchema = __reducers(
   __reducerSchema("register_worker", RegisterWorkerReducer),
   __reducerSchema("reject_plan", RejectPlanReducer),
   __reducerSchema("release_event", ReleaseEventReducer),
+  __reducerSchema("request_plan_options", RequestPlanOptionsReducer),
   __reducerSchema("request_whatif", RequestWhatifReducer),
   __reducerSchema("reset_clock", ResetClockReducer),
+  __reducerSchema("revoke_decision", RevokeDecisionReducer),
   __reducerSchema("run_fleet_sweep", RunFleetSweepReducer),
+  __reducerSchema("select_contingency", SelectContingencyReducer),
+  __reducerSchema("send_inspector", SendInspectorReducer),
   __reducerSchema("set_active_dataset", SetActiveDatasetReducer),
   __reducerSchema("set_clock", SetClockReducer),
   __reducerSchema("set_name", SetNameReducer),

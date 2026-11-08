@@ -39,4 +39,6 @@ export default __t.row({
   approvedAt: __t.option(__t.timestamp()).name("approved_at"),
   agentRunId: __t.option(__t.string()).name("agent_run_id"),
   searchMs: __t.u32().name("search_ms"),
+  optionKey: __t.string().name("option_key"),
+  scenarioFacilityId: __t.string().name("scenario_facility_id"),
 });

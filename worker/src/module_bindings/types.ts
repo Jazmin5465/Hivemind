@@ -114,6 +114,26 @@ export const DatasetRaw = __t.object("DatasetRaw", {
 });
 export type DatasetRaw = __Infer<typeof DatasetRaw>;
 
+export const Decision = __t.object("Decision", {
+  id: __t.u64(),
+  datasetId: __t.string(),
+  eventId: __t.string(),
+  systemId: __t.string(),
+  facilityId: __t.string(),
+  kind: __t.string(),
+  optionKey: __t.string(),
+  planId: __t.option(__t.u64()),
+  title: __t.string(),
+  detail: __t.string(),
+  estimatedCost: __t.f64(),
+  status: __t.string(),
+  decidedBy: __t.identity(),
+  operatorName: __t.string(),
+  asOfUnix: __t.u32(),
+  createdAt: __t.timestamp(),
+});
+export type Decision = __Infer<typeof Decision>;
+
 export const DispatchMessage = __t.object("DispatchMessage", {
   id: __t.u64(),
   datasetId: __t.string(),
@@ -326,6 +346,8 @@ export const Plan = __t.object("Plan", {
   approvedAt: __t.option(__t.timestamp()),
   agentRunId: __t.option(__t.string()),
   searchMs: __t.u32(),
+  optionKey: __t.string(),
+  scenarioFacilityId: __t.string(),
 });
 export type Plan = __Infer<typeof Plan>;
 

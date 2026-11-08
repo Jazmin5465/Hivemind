@@ -8,13 +8,14 @@ Hivemind finds pump failures, pipeline leaks and worn pumps in the sensor readin
 dataset folder ──► worker (parse CSV) ──► SpacetimeDB module (tables + reducers + scheduled clock)
                                               ▲   │ subscriptions
  Python ML sidecar (ml/) ◄── worker ──────────┘   ▼
- Nemotron (NVIDIA endpoint) ◄── agent worker ◄── events      frontend (client/) + operators
+ Nemotron (NVIDIA endpoint) ◄── agent worker ◄── events      frontend (frontend/) + operators
 ```
 
 - **`server/`**: the SpacetimeDB TypeScript module. It owns all state: datasets, the time-travel clock, telemetry, events, plans, claims, handoffs and agent traces. Detection, countdowns and plans are recomputed *inside the module* whenever the clock moves.
 - **`core/`**: pure TypeScript logic with no Spacetime imports: tank physics, the exact planner, countdown, rules detector, ML event thresholding, plan validation, number verifier.
 - **`worker/`**: the dataset loader, the ML bridge (Hadent's sidecar) and the Nemotron agent.
 - **`scripts/`**: data fetch, setup, the test-data flip, and eval (`scripts/eval/` is the only code that reads answer keys).
+- **`frontend/`**: the operator console (TanStack Start + React), live from SpacetimeDB subscriptions.
 - **`docs/API.md`**: the tables and reducers the frontend uses. **`docs/ML_CONTRACT.md`**: the sidecar contract.
 
 All data comes from the three files of a dataset folder (`network.json`, `ops.json`, `telemetry.csv`). "Now" is the last `ts_unix` in the telemetry. No IDs, counts or thresholds are hardcoded.

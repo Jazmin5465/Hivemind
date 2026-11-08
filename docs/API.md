@@ -7,7 +7,7 @@ Everything lives in one SpacetimeDB module, `hivemind`, on the local server. The
 ## Connect
 
 ```ts
-import { DbConnection } from './module_bindings'; // generated: client/src/module_bindings
+import { DbConnection } from './module_bindings'; // generated: frontend/src/module_bindings
 
 const conn = DbConnection.builder()
   .withUri('ws://127.0.0.1:3000')      // the backend laptop's IP for other devices on the LAN
@@ -17,7 +17,7 @@ const conn = DbConnection.builder()
   .build();
 ```
 
-Regenerate the bindings after any backend change with `npm run server:generate` from the repo root. The bindings are committed in `client/src/module_bindings`.
+Regenerate the bindings after any backend change with `npm run server:generate` from the repo root. The bindings are committed in `frontend/src/module_bindings`.
 
 ## Naming conventions (read this first)
 
@@ -147,13 +147,15 @@ When the ML sidecar has run, there are also per-step probabilities: `ml_p_failur
 | Column | Meaning |
 |---|---|
 | `systemId`, `eventIds: string[]` | one plan covers **all** of a system's ongoing pump failures jointly, because they share trucks |
-| `origin` | `planner` (auto, re-optimized at every clock change) \| `agent` \| `operator` \| `whatif` |
-| `status` | `proposed` \| `approved` \| `rejected` \| `superseded` |
+| `origin` | `planner` (auto, re-optimized at every clock change) \| `agent` \| `operator` \| `whatif` \| `option` (decision-popup options) |
+| `status` | `proposed` \| `approved` \| `rejected` \| `superseded` \| `contingency` (picked for a hypothetical failure) |
 | `planStartUnix`, `totalCost`, `doNothingCost` | savings = `doNothingCost − totalCost`; `doNothingCost` is NaN for agent plans |
 | `fleetSize`, `trucksAvailable` | trucks busy on earlier approved plans are not available |
 | `valid`, `validationErrors: string[]` | the module re-validates every plan: fleet limit, trips arriving before the repair ends, tank volume |
 | `summary`, `rationale` | `rationale` holds the agent or operator text |
 | `overrides?`, `createdBy`, `createdAt`, `approvedBy?`, `approvedAt?`, `agentRunId?`, `searchMs` | |
+| `optionKey` | for `origin: 'option'` plans (from `requestPlanOptions`): `optimal` \| `shut_in_only` \| `trucks_only` \| `do_nothing`; `''` otherwise |
+| `scenarioFacilityId` | non-empty for a **contingency** plan: a hypothetical "this pump fails now" at that facility (not a live alert; never commits trucks) |
 
 **`plan_action`** (PK `id`): matches the `events.json` action shape in SPEC.md.
 `planId`, `eventId`, `facilityId`, `type` (`dispatch_truck` | `shut_in_wells` | `none` | `field_inspection`), `trucks`, `tripsPerTruck`, `wells: string[]`, `startAfterMin` (minutes after `planStartUnix`), `assetId`.
@@ -165,6 +167,10 @@ When the ML sidecar has run, there are also per-step probabilities: `ml_p_failur
 
 **`fleet_sweep`** (PK `key`): the "how big should the fleet be?" analysis, filled by `runFleetSweep`.
 `systemId`, `fleetSize`, `isCurrent` (the fleet size from ops.json), `failures`, `totalCost` (the week's response cost with that fleet), `trips` (failures that still trip), `truckTrips`, `wellsShutIn`, `asOfUnix`.
+
+**`decision`** (PK `id`): the shared log of operator decisions. The alerts queue hides decided items; the timeline and fleet status read it.
+`datasetId`, `eventId`, `systemId`, `facilityId`, `kind` (`plan` = plan approved \| `inspection` = inspector sent \| `contingency` = plan picked for a hypothetical failure), `optionKey`, `planId?`, `title`, `detail`, `estimatedCost` (this facility's share), `status` (`active` \| `revoked`), `decidedBy`, `operatorName`, `asOfUnix` (sim clock), `createdAt`.
+Approving a joint plan writes one row per failure it covers. Rejecting an approved plan revokes its rows.
 
 ### Multiplayer
 
@@ -196,6 +202,10 @@ Use the camelCase TS name, for example `conn.reducers.approvePlan({ planId })`. 
 | `requestWhatif` | `datasetId, systemId, overrides, label` | baseline plan vs plan with overrides → a `whatif_result` row |
 | `approvePlan` | `planId` | re-validates, then approves. Its trucks become busy and its events are marked handled. Rejects with the errors if the plan is invalid. |
 | `rejectPlan` | `planId, reason` | also un-approves an approved plan, which releases its trucks |
+| `requestPlanOptions` | `datasetId, systemId, facilityId?` | the decision popup's 4 options as `origin: 'option'` plans (`optimal`, `shut_in_only`, `trucks_only`, `do_nothing`) for the system's ongoing failures. With `facilityId`: a contingency for a hypothetical "this pump fails now". Replaces your previous options for that system |
+| `selectContingency` | `planId` | record the contingency plan an operator picked (no trucks committed) |
+| `sendInspector` | `eventId, note` | leak / worn pump: record that an inspector was sent |
+| `revokeDecision` | `id` | undo an inspection or contingency decision (plan approvals: `rejectPlan`) |
 | `prunePlans` | `datasetId` | deletes what-if, rejected and superseded plans |
 | `claimEvent` | `eventId, note` | fails if someone else holds the claim |
 | `releaseEvent` | `eventId` | |
@@ -223,5 +233,6 @@ Worker-only reducers (`loadDataset*`, `ml*`, `agent*`, `registerWorker`, `setWor
 - **Demo:** `injectFailure(ds, 'S1_FACILITY_A')` creates a new ongoing failure with a countdown and a plan within one transaction.
 
 ## Changelog
+- v1.2 (2026-11-08 03:00): + `decision` table, `plan.optionKey` / `plan.scenarioFacilityId`, `requestPlanOptions`, `selectContingency`, `sendInspector`, `revokeDecision`; `approvePlan` logs decisions; the fleet sweep runs automatically on load. Bindings now in `frontend/src/module_bindings`.
 - v1.1 (2026-11-07 23:30): + `fleet_sweep` table, `runFleetSweep`, `injectSystemOutage`.
 - v1 (2026-11-07 23:00): first version.

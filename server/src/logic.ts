@@ -97,7 +97,7 @@ export function dropCache(datasetId: string) {
 export function committedPlans(ctx: Ctx, datasetId: string, excludePlanId?: bigint): CommittedPlan[] {
   const out: CommittedPlan[] = [];
   for (const p of ctx.db.plan.datasetId.filter(datasetId)) {
-    if (p.status !== 'approved' || p.planId === excludePlanId) continue;
+    if (p.status !== 'approved' || p.planId === excludePlanId || p.scenarioFacilityId) continue;
     const free: number[] = [];
     for (const pf of ctx.db.planFacility.planId.filter(p.planId)) free.push(...pf.truckFreeAtUnix);
     // core/analyze uses event keys without the dataset prefix
@@ -132,6 +132,8 @@ export interface PlanMeta {
   overrides?: PlanOverrides;
   agentRunId?: string;
   validation?: ValidateResult;
+  optionKey?: string;
+  scenarioFacilityId?: string;
 }
 
 function overridesToRow(o?: PlanOverrides) {
@@ -179,6 +181,8 @@ export function writePlan(
     approvedAt: undefined,
     agentRunId: meta.agentRunId,
     searchMs: Math.round(sp.stats.ms),
+    optionKey: meta.optionKey ?? '',
+    scenarioFacilityId: meta.scenarioFacilityId ?? '',
   };
   let planId: bigint;
   if (existingPlanId != null && ctx.db.plan.planId.find(existingPlanId)) {
@@ -399,6 +403,7 @@ export function deleteDatasetRows(ctx: Ctx, datasetId: string, keepClockAndColla
   delAll(ctx.db.event.datasetId.filter(datasetId), (r) => ctx.db.event.eventId.delete(r.eventId));
   delAll(ctx.db.eventEvidence.datasetId.filter(datasetId), (r) => ctx.db.eventEvidence.id.delete(r.id));
   delAll(ctx.db.plan.datasetId.filter(datasetId), (r) => deletePlan(ctx, r.planId));
+  delAll(ctx.db.decision.datasetId.filter(datasetId), (r) => ctx.db.decision.id.delete(r.id));
   delAll(ctx.db.whatifRequest.datasetId.filter(datasetId), (r) => ctx.db.whatifRequest.requestId.delete(r.requestId));
   delAll(ctx.db.whatifResult.datasetId.filter(datasetId), (r) => ctx.db.whatifResult.requestId.delete(r.requestId));
   delAll(ctx.db.injectedFailure.datasetId.filter(datasetId), (r) => ctx.db.injectedFailure.id.delete(r.id));
