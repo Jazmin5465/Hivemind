@@ -231,8 +231,23 @@ export const FacilityState = __t.object("FacilityState", {
   wellIds: __t.array(__t.string()),
   wellStatus: __t.array(__t.f64()),
   wellWaterBpd: __t.array(__t.f64()),
+  watchHours: __t.f64(),
+  watchRank: __t.u32(),
 });
 export type FacilityState = __Infer<typeof FacilityState>;
+
+export const FleetRecommendation = __t.object("FleetRecommendation", {
+  key: __t.string(),
+  datasetId: __t.string(),
+  kind: __t.string(),
+  fromSystem: __t.string(),
+  toSystem: __t.string(),
+  km: __t.f64(),
+  reason: __t.string(),
+  savings: __t.f64(),
+  asOfUnix: __t.u32(),
+});
+export type FleetRecommendation = __Infer<typeof FleetRecommendation>;
 
 export const FleetSweep = __t.object("FleetSweep", {
   key: __t.string(),
@@ -392,6 +407,7 @@ export const PlanFacility = __t.object("PlanFacility", {
   traceStepSec: __t.u32(),
   levelTrace: __t.array(__t.f64()),
   summary: __t.string(),
+  latestDispatchUnix: __t.u32(),
 });
 export type PlanFacility = __Infer<typeof PlanFacility>;
 
@@ -435,6 +451,7 @@ export const SimClock = __t.object("SimClock", {
   carrySec: __t.f64(),
   computedForUnix: __t.u32(),
   computeMs: __t.u32(),
+  nowSetAtMicros: __t.u64(),
 });
 export type SimClock = __Infer<typeof SimClock>;
 

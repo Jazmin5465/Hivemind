@@ -2,7 +2,7 @@
 // print what the dashboard, fleets and timeline would show. Same code the browser runs.
 import { LiveStore } from '@/lib/live/store';
 import {
-  fleetTrucks, fleets, fmtCountdown, formatTime, historyNodes, longTermRecommendation, mapModel, nowOf, pendingPriority, priorityQueue,
+  fleetTrucks, fleets, fmtCountdown, formatTime, historyNodes, recommendations, mapModel, nowOf, pendingPriority, priorityQueue,
 } from '@/lib/live/derive';
 
 const store = new LiveStore(process.env['VITE_SPACETIME_URI'] ?? 'ws://127.0.0.1:3000', process.env['VITE_SPACETIME_DB'] ?? 'hivemind');
@@ -28,7 +28,7 @@ for (const f of fleets(live)) {
   const busy = fleetTrucks(live, f).filter((t) => t.status !== 'Standby').length;
   console.log(`  ${f.name}: ${f.trucks - busy} of ${f.trucks} available`);
 }
-console.log('LONG TERM', longTermRecommendation(live)?.reason ?? 'none');
+console.log('FLEET ADVICE', recommendations(live).map((r) => `${r.kind}: ${r.reason}`).join(' | ') || 'none');
 const m = mapModel(live);
 console.log(`MAP ${m.W}x${m.H}: ${m.nodes.length} nodes, ${m.nodes.filter((n) => n.status === 'fail').length} failing, ${m.edges.filter((e) => e.failing).length} failing edges`);
 console.log(`TIMELINE ${historyNodes(live).length} event nodes`);

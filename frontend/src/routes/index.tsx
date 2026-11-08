@@ -7,10 +7,11 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { useLive, useLiveActions } from '@/components/LiveProvider';
 import { FleetPanel } from '@/components/FleetPanel';
 import {
-  fleets as liveFleets, fleetTrucks, fmtCountdown, formatTime, inspectOption, longTermRecommendation, nowOf, optionPlans,
-  pendingPriority, planToOption, priorityQueue, temporaryRecommendations, type DecisionPlan, type Fleet, type PriorityItem,
+  dedupeOptions, effectiveNow, fleets as liveFleets, fleetTrucks, fmtCountdown, formatTime, inspectOption, nowOf, optionPlans,
+  pendingPriority, planToOption, priorityQueue, recommendations, tickSeconds, type DecisionPlan, type Fleet, type PriorityItem,
 } from '@/lib/live/derive';
 import type { LiveData } from '@/lib/live/store';
+import { useTick } from '@/hooks/use-countdown';
 
 export const Route = createFileRoute('/')({
   head:()=>({meta:[{title:'Hivemind — Operations Priority Queue'},{name:'description',content:'Ranked operational risks and timed remediation decisions for Avon’s water network.'},{property:'og:title',content:'Hivemind — Operations Priority Queue'},{property:'og:description',content:'Compare well shut-in and truck hauling plans, then record your decision.'},{property:'og:type',content:'website'},{name:'twitter:card',content:'summary_large_image'}]}),
@@ -18,6 +19,8 @@ export const Route = createFileRoute('/')({
 });
 function Dashboard() {
   const live=useLive();
+  useTick(); // re-render every second: countdowns and truck progress tick in real time between backend updates
+  const now=effectiveNow(live);
   const [selected,setSelected]=useState<PriorityItem|null>(null);
   const [fleetId,setFleetId]=useState<string|null>(null);
   const fleets=liveFleets(live);
@@ -46,22 +49,20 @@ function Dashboard() {
             <span className="flex items-center gap-2 font-mono text-xs text-muted-foreground"><span className="mr-1 text-lg font-semibold tabular-nums text-primary">{String(i+1).padStart(2,'0')}</span><Icon className={item.severity==='critical'?'text-destructive':'text-muted-foreground'}/><span className={item.scenario?'':'text-destructive'}>{item.scenario?'PROACTIVE WATCH':'ACTIVE FAILURE'}</span>{item.confidence!==undefined&&<span className="ml-auto">{Math.round(item.confidence*100)}% confidence</span>}</span>
             <span className="mt-2 text-lg font-semibold">{item.title}</span><span className="break-all font-mono text-xs text-muted-foreground">{item.facility}</span>
             <span className="mt-4 font-mono text-sm uppercase tracking-wider text-muted-foreground">{item.seconds===undefined?'Status':item.scenario?'Time to shut-in if pump stops':'Time to shut-in'}</span>
-            <span className={`font-mono font-semibold tabular-nums ${item.seconds===undefined?'text-2xl':'text-4xl'}`}>{item.seconds===undefined?(item.category==='pipeline_leak'?'Active leak':'Inspection needed'):fmtCountdown(item.seconds)}</span>
+            <span className={`font-mono font-semibold tabular-nums ${item.seconds===undefined?'text-2xl':'text-4xl'}`}>{item.seconds===undefined?(item.category==='pipeline_leak'?'Active leak':'Inspection needed'):fmtCountdown(tickSeconds(live,item.seconds,now)??0)}</span>
           </Button></li>;
         })}
       </ol>
       {loading?<p role="status" className="py-10 text-center text-muted-foreground">{live.status==='connected'?(live.dataset?'Loading live data…':'No active dataset loaded.'):'Connecting to the backend…'}</p>:!queue.length&&<p className="py-10 text-center text-muted-foreground">All queued items have a recorded decision.</p>}
       </div>
     </section>
-    <section><h2 className="mb-4 text-lg font-semibold">Emergency fleets</h2><div className="flex gap-3 overflow-x-auto pb-3">{fleets.map(f=>{const busy=fleetTrucks(live,f).filter(t=>t.status!=='Standby').length;return <Button key={f.id} variant="outline" aria-expanded={fleetId===f.id} onClick={()=>setFleetId(fleetId===f.id?null:f.id)} className={`fleet-card h-auto min-w-52 flex-col items-start rounded-md border-border bg-card p-4 text-left shadow-none ${fleetId===f.id?'border-accent':''}`}><span className="font-mono text-sm">{f.name}</span><span className="flex items-center gap-2 text-sm text-muted-foreground"><Truck/>{f.trucks-busy} of {f.trucks} trucks available</span><span className="text-xs text-muted-foreground">{busy?`${busy} dispatched`:'All at yard'}</span></Button>;})}</div>{openFleet&&<FleetPanel fleet={openFleet} close={()=>setFleetId(null)}/>}</section>
-    <FleetRecommendations live={live} fleets={fleets}/>
+    <section><h2 className="mb-4 text-lg font-semibold">Emergency fleets</h2><div className="flex gap-3 overflow-x-auto pb-3">{fleets.map(f=>{const busy=fleetTrucks(live,f,now).filter(t=>t.status!=='Standby').length;return <Button key={f.id} variant="outline" aria-expanded={fleetId===f.id} onClick={()=>setFleetId(fleetId===f.id?null:f.id)} className={`fleet-card h-auto min-w-52 flex-col items-start rounded-md border-border bg-card p-4 text-left shadow-none ${fleetId===f.id?'border-accent':''}`}><span className="font-mono text-sm">{f.name}</span><span className="flex items-center gap-2 text-sm text-muted-foreground"><Truck/>{f.trucks-busy} of {f.trucks} trucks available</span><span className="text-xs text-muted-foreground">{busy?`${busy} dispatched`:'All at yard'}</span></Button>;})}</div>{openFleet&&<FleetPanel fleet={openFleet} now={now} close={()=>setFleetId(null)}/>}</section>
+    <FleetRecommendations live={live}/>
     <Dialog open={Boolean(selected)} onOpenChange={open=>{if(!open)setSelected(null);}}><DialogContent className="max-h-[90dvh] w-[calc(100%-2rem)] max-w-4xl overflow-y-auto bg-popover">{selected&&<DecisionModal key={selected.id} item={selected} close={()=>setSelected(null)}/>}</DialogContent></Dialog>
   </main>;
 }
-function FleetRecommendations({live,fleets}:{live:LiveData;fleets:Fleet[]}) {
-  const loads=fleets.map(f=>({id:f.id,trucks:f.trucks,standby:fleetTrucks(live,f).filter(t=>t.status==='Standby').length,failures:0}));
-  const longTerm=longTermRecommendation(live);
-  const recs=[...temporaryRecommendations(live,loads),...(longTerm?[longTerm]:[])];
+function FleetRecommendations({live}:{live:LiveData}) {
+  const recs=recommendations(live); // computed by the backend (fleet_recommendation)
   const group=(kind:'temporary'|'long_term',title:string)=>{const list=recs.filter(r=>r.kind===kind);return <div className="rounded-md border border-border bg-card p-4">
     <h3 className="mb-3 font-mono text-xs uppercase text-muted-foreground">{title}</h3>
     {list.length?<ul className="space-y-3">{list.map(r=><li key={r.from+r.to} className="text-sm"><p className="flex items-center gap-2 font-mono font-semibold">{r.from}<ArrowRight className="size-4 text-accent"/>{r.to}<span className="ml-auto text-xs font-normal text-muted-foreground">{r.km.toFixed(0)} km between yards</span></p><p className="mt-1 text-xs text-muted-foreground">{kind==='temporary'?'Lend 1 truck until it returns. ':'Reassign 1 truck permanently. '}{r.reason}</p></li>)}</ul>
@@ -84,7 +85,7 @@ function DecisionModal({item,close}:{item:PriorityItem;close:()=>void}) {
     return()=>{alive=false;};
   },[actions,inspect,item.systemId,item.facility,item.scenario]);
   const optionRows=inspect?[]:optionPlans(live,item.systemId,item.scenario?item.facility:'');
-  const plans:DecisionPlan[]=inspect?[inspectOption(item.category)]:optionRows.map(p=>planToOption(live,p));
+  const plans:DecisionPlan[]=inspect?[inspectOption(item.category)]:dedupeOptions(optionRows.map(p=>planToOption(live,p)));
   const best=[...plans].sort((a,b)=>a.cost-b.cost||a.trucks-b.trucks)[0];
   const [choice,setChoice]=useState<string|undefined>(undefined),[busy,setBusy]=useState(false);
   useEffect(()=>{if(choice===undefined&&best)setChoice(best.key);},[best,choice]);
@@ -133,6 +134,7 @@ function DecisionModal({item,close}:{item:PriorityItem;close:()=>void}) {
               <span className="block text-xs text-muted-foreground">{p.truckingCost>0?`$${Math.round(p.revenueLoss).toLocaleString()} lost sales + $${Math.round(p.truckingCost).toLocaleString()} hauling`:'Lost sales'}</span>
               <span className="mt-2 block text-sm">{impact(p)}</span>
               {p.lines.length>1&&<span className="mt-2 block space-y-0.5 text-xs text-muted-foreground">{p.lines.map(l=><span key={l.facilityId} className="block">{l.facilityId}: {l.summary}</span>)}</span>}
+              {item.scenario&&selected&&p.trucks>0&&p.latestDispatchUnix!==undefined&&<span className="mt-2 block rounded border border-accent/50 bg-accent/10 px-2 py-1.5 font-mono text-xs"><span className="block text-accent">Estimated dispatch: call trucks by {formatTime(p.latestDispatchUnix)}</span><span className="block text-muted-foreground">Latest call that still prevents the shutdown if this pump fails now{p.firstArrivalUnix!==undefined?` · if called now, first truck arrives ${formatTime(p.firstArrivalUnix)}`:''}</span></span>}
               {!p.valid&&<span className="mt-2 block text-xs text-destructive">{p.errors.join('; ')}</span>}
             </>}
         </label>;})}

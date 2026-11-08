@@ -29,4 +29,6 @@ export default __t.row({
   wellIds: __t.array(__t.string()).name("well_ids"),
   wellStatus: __t.array(__t.f64()).name("well_status"),
   wellWaterBpd: __t.array(__t.f64()).name("well_water_bpd"),
+  watchHours: __t.f64().name("watch_hours"),
+  watchRank: __t.u32().name("watch_rank"),
 });

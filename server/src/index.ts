@@ -17,6 +17,7 @@ import {
   requireDataset,
   requireReady,
   writePlan,
+  writeFleetAdvice,
   type Ctx,
 } from './logic';
 import { buildModel } from '../../core/src/model';
@@ -175,7 +176,7 @@ export const loadDatasetEnd = spacetimedb.reducer(
     ctx.db.dataset.datasetId.update({ ...d, status: 'ready', tStart: a.tStart, tEnd: a.tEnd, stepSec: a.stepSec, nSteps: a.nSteps, seriesCount: a.seriesCount, rowCount: a.rowCount });
     // "now" is the last ts_unix in the telemetry
     const clock = ctx.db.simClock.datasetId.find(a.datasetId);
-    const c = { datasetId: a.datasetId, nowUnix: a.tEnd, playing: false, speed: clock?.speed ?? 300, carrySec: 0, computedForUnix: 0, computeMs: 0 };
+    const c = { datasetId: a.datasetId, nowUnix: a.tEnd, playing: false, speed: clock?.speed ?? 300, carrySec: 0, computedForUnix: 0, computeMs: 0, nowSetAtMicros: ctx.timestamp.microsSinceUnixEpoch };
     if (clock) ctx.db.simClock.datasetId.update(c);
     else ctx.db.simClock.insert(c);
     dropCache(a.datasetId);
@@ -219,7 +220,7 @@ function snap(d: { tStart: number; tEnd: number; stepSec: number }, unix: number
 export const setClock = spacetimedb.reducer({ datasetId: t.string(), nowUnix: t.u32() }, (ctx, { datasetId, nowUnix }) => {
   const d = requireReady(ctx, datasetId);
   const clock = ctx.db.simClock.datasetId.find(datasetId)!;
-  ctx.db.simClock.datasetId.update({ ...clock, nowUnix: snap(d, nowUnix), carrySec: 0 });
+  ctx.db.simClock.datasetId.update({ ...clock, nowUnix: snap(d, nowUnix), carrySec: 0, nowSetAtMicros: ctx.timestamp.microsSinceUnixEpoch });
   recompute(ctx, datasetId);
 });
 
@@ -228,21 +229,21 @@ export const play = spacetimedb.reducer({ datasetId: t.string(), speed: t.f64() 
   if (!(speed > 0) || speed > 100_000) throw new SenderError('speed must be in (0, 100000] simulated seconds per second');
   const clock = ctx.db.simClock.datasetId.find(datasetId)!;
   const start = clock.nowUnix >= d.tEnd ? d.tStart : clock.nowUnix; // replay from the start if at the end
-  ctx.db.simClock.datasetId.update({ ...clock, playing: true, speed, nowUnix: start, carrySec: 0 });
+  ctx.db.simClock.datasetId.update({ ...clock, playing: true, speed, nowUnix: start, carrySec: 0, nowSetAtMicros: ctx.timestamp.microsSinceUnixEpoch });
   if (start !== clock.nowUnix) recompute(ctx, datasetId);
 });
 
 export const pause = spacetimedb.reducer({ datasetId: t.string() }, (ctx, { datasetId }) => {
   requireDataset(ctx, datasetId);
   const clock = ctx.db.simClock.datasetId.find(datasetId);
-  if (clock) ctx.db.simClock.datasetId.update({ ...clock, playing: false, carrySec: 0 });
+  if (clock) ctx.db.simClock.datasetId.update({ ...clock, playing: false, carrySec: 0, nowSetAtMicros: ctx.timestamp.microsSinceUnixEpoch });
 });
 
 /** Jump the clock back to the recording's "now" (last ts_unix). */
 export const resetClock = spacetimedb.reducer({ datasetId: t.string() }, (ctx, { datasetId }) => {
   const d = requireReady(ctx, datasetId);
   const clock = ctx.db.simClock.datasetId.find(datasetId)!;
-  ctx.db.simClock.datasetId.update({ ...clock, playing: false, nowUnix: d.tEnd, carrySec: 0 });
+  ctx.db.simClock.datasetId.update({ ...clock, playing: false, nowUnix: d.tEnd, carrySec: 0, nowSetAtMicros: ctx.timestamp.microsSinceUnixEpoch });
   recompute(ctx, datasetId);
 });
 
@@ -259,7 +260,7 @@ export const tick = spacetimedb.reducer({ onSchedule: clockTimer }, { timer: clo
       continue;
     }
     const next = Math.min(d.tEnd, clock.nowUnix + steps * d.stepSec);
-    ctx.db.simClock.datasetId.update({ ...clock, nowUnix: next, carrySec: carry, playing: next < d.tEnd });
+    ctx.db.simClock.datasetId.update({ ...clock, nowUnix: next, carrySec: carry, playing: next < d.tEnd, nowSetAtMicros: ctx.timestamp.microsSinceUnixEpoch });
     recompute(ctx, clock.datasetId);
   }
 });
@@ -317,6 +318,7 @@ function fleetSweepRows(ctx: Ctx, datasetId: string) {
   for (const r of [...ctx.db.fleetSweep.datasetId.filter(datasetId)]) ctx.db.fleetSweep.key.delete(r.key);
   for (const r of rows)
     ctx.db.fleetSweep.insert({ key: `${datasetId}/${r.systemId}/${r.fleetSize}`, datasetId, ...r, asOfUnix: clock.nowUnix });
+  writeFleetAdvice(ctx, datasetId, model, clock.nowUnix);
 }
 
 export const clearInjected = spacetimedb.reducer({ datasetId: t.string() }, (ctx, { datasetId }) => {

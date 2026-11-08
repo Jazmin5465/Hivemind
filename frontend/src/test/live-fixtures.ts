@@ -23,7 +23,7 @@ export function state(facilityId: string, systemId: string, levelPct: number, in
   return {
     key: `${DS}/${facilityId}`, datasetId: DS, facilityId, systemId, asOfUnix: NOW, levelPct, inflowBpd, pumpStatus: 1, pumpFlowBpd: 3000,
     dischargePsi: 1150, receiveFlowBpd: 3000, pipelinePressurePsi: 1050, wellsProducing: 1, wellsTotal: 1, health: 'ok',
-    wellIds: [], wellStatus: [], wellWaterBpd: [], ...extra,
+    wellIds: [], wellStatus: [], wellWaterBpd: [], watchHours: -1, watchRank: 0, ...extra,
   } as never;
 }
 export function event(id: string, facilityId: string, systemId: string, category: string, extra: Record<string, unknown> = {}) {
@@ -51,7 +51,7 @@ export function planFacility(planId: bigint, facilityId: string, extra: Record<s
     id: planId * 10n, planId, eventId: '', facilityId, cost: 905, truckCost: 905, shutInCost: 0, tripCost: 0, doNothingCost: 5000,
     tripsAtUnix: undefined, tripsAtUnixIfNothing: NOW + 7200, peakLevelPct: 80, repairEndUnix: NOW + 5 * 3600, levelAtStartPct: 60,
     alreadyTripped: false, wellsOff: [], truckArrivalsUnix: [NOW + 75 * 60], truckFreeAtUnix: [NOW + 305 * 60], traceT0: NOW, traceStepSec: 300,
-    levelTrace: [], summary: '1 truck, 1 trip', ...extra,
+    levelTrace: [], summary: '1 truck, 1 trip', latestDispatchUnix: 0, ...extra,
   } as never;
 }
 export function decision(id: bigint, eventId: string, kind: string, extra: Record<string, unknown> = {}) {
@@ -70,9 +70,10 @@ export function liveData(over: Partial<LiveData> = {}): LiveData {
     ...emptyLive,
     status: 'connected',
     identity: ME,
+    clockReceivedAtMs: Date.now(),
     ready: true,
     dataset: { datasetId: DS, source: '/x', status: 'ready', error: '', tStart: NOW - 86400, tEnd: NOW, stepSec: 300, nSteps: 289, seriesCount: 1, rowCount: 1, active: true, loadVersion: 1, loadedAt: ts(0n), detector: 'rules' } as never,
-    clock: { datasetId: DS, nowUnix: NOW, playing: false, speed: 300, carrySec: 0, computedForUnix: NOW, computeMs: 1 } as never,
+    clock: { datasetId: DS, nowUnix: NOW, playing: false, speed: 300, carrySec: 0, computedForUnix: NOW, computeMs: 1, nowSetAtMicros: 0n } as never,
     opsConfig: { datasetId: DS, oilPerBbl: 60, gasPerMcf: 3, repairHoursPumpFailure: 6, truckCapacityBbl: 150, costPerTrip: 905, warningPct: 85, shutdownPct: 92 } as never,
     ...over,
   };

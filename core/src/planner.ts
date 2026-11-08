@@ -73,6 +73,9 @@ export interface FacilityPlan {
   /** level trace on a 5-min grid from plan start to repair end */
   levelTrace: { t0: number; stepSec: number; values: number[] };
   summary: string;
+  /** trucks only: latest time the same dispatch can be called and still prevent the shutdown
+   *  (every trip before the repair ends); null when the plan sends no trucks */
+  latestDispatchUnix: number | null;
 }
 
 export interface SystemPlan {
@@ -281,6 +284,7 @@ function materialize(input: PlanInput, ctx: FacilityCtx, c: Candidate): Facility
     truckFreeAtUnix: freeAt !== null ? new Array(c.trucks).fill(freeAt) : [],
     levelTrace: { t0: now, stepSec: TRACE_STEP_MIN * 60, values: sim.trace.map((v) => Math.round(v * 100) / 100) },
     summary: describe(ctx, c, nothing.tripMin),
+    latestDispatchUnix: trucks && sim.tripMin === null ? latestDispatch(ctx, trucks, shut, now) : null,
   };
 }
 
@@ -333,4 +337,25 @@ export function planSystem(input: PlanInput): SystemPlan {
     facilities,
     stats: { evaluated: counter.n, ms: Date.now() - t0 },
   };
+}
+
+/**
+ * Latest whole minute after plan start that the same trucks can still be called (arrivals shift
+ * by the delay; a shut-in keeps its own start) and the tank still never trips, with every trip
+ * arriving before the repair ends. Later calls only make things worse, so binary search is exact.
+ */
+function latestDispatch(ctx: FacilityCtx, trucks: TruckParams, shut: ShutInParams | null, now: number): number | null {
+  const ok = (delay: number) => {
+    const r = simulateTank(ctx.tank, { ...trucks, responseMin: trucks.responseMin + delay }, shut);
+    return r.tripMin === null && r.arrivalsMin.length === trucks.tripsPerTruck;
+  };
+  if (!ok(0)) return null;
+  let lo = 0;
+  let hi = Math.max(0, Math.floor(ctx.tank.horizonMin));
+  while (lo < hi) {
+    const mid = Math.floor((lo + hi + 1) / 2);
+    if (ok(mid)) lo = mid;
+    else hi = mid - 1;
+  }
+  return now + lo * 60;
 }

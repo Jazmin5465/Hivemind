@@ -4,7 +4,7 @@
 // Browser only: never constructed during SSR.
 import { DbConnection, type SubscriptionHandle } from '@/module_bindings';
 import type {
-  Dataset, Decision, Event, EventEvidence, Facility, FacilityState, FleetSweep, Operator, OpsConfig, OpsFacility,
+  Dataset, Decision, Event, EventEvidence, Facility, FacilityState, FleetRecommendation, FleetSweep, Operator, OpsConfig, OpsFacility,
   OpsSystem, Plan, PlanAction, PlanFacility, SimClock, System, Well,
 } from '@/module_bindings/types';
 
@@ -32,6 +32,10 @@ export interface LiveData {
   planFacilities: PlanFacility[];
   decisions: Decision[];
   fleetSweep: FleetSweep[];
+  /** backend fleet advice: 'temporary' borrowing and the 'long_term' move */
+  fleetRecommendations: FleetRecommendation[];
+  /** browser time (ms) when the clock's nowUnix last changed: lets the UI tick in real time between backend updates */
+  clockReceivedAtMs: number;
   /** true once the active dataset's tables have arrived */
   ready: boolean;
 }
@@ -39,7 +43,8 @@ export interface LiveData {
 export const emptyLive: LiveData = {
   status: 'connecting', error: '', identity: '', datasets: [], dataset: undefined, clock: undefined, operators: [],
   systems: [], facilities: [], wells: [], opsConfig: undefined, opsSystems: [], opsFacilities: [], facilityStates: [],
-  events: [], evidence: [], plans: [], planActions: [], planFacilities: [], decisions: [], fleetSweep: [], ready: false,
+  events: [], evidence: [], plans: [], planActions: [], planFacilities: [], decisions: [], fleetSweep: [], fleetRecommendations: [],
+  clockReceivedAtMs: 0, ready: false,
 };
 
 const TOKEN_KEY = 'hivemind.stdb_token';
@@ -68,13 +73,14 @@ function datasetQueries(ds: string): string[] {
     `SELECT * FROM plan_facility`,
     `SELECT * FROM decision WHERE dataset_id = ${d}`,
     `SELECT * FROM fleet_sweep WHERE dataset_id = ${d}`,
+    `SELECT * FROM fleet_recommendation WHERE dataset_id = ${d}`,
   ];
 }
 
 // table accessors on conn.db that the console reads
 const TABLES = [
   'dataset', 'simClock', 'operator', 'system', 'facility', 'well', 'opsConfig', 'opsSystem', 'opsFacility',
-  'facilityState', 'event', 'eventEvidence', 'plan', 'planAction', 'planFacility', 'decision', 'fleetSweep',
+  'facilityState', 'event', 'eventEvidence', 'plan', 'planAction', 'planFacility', 'decision', 'fleetSweep', 'fleetRecommendation',
 ] as const;
 
 type Listener = () => void;
@@ -90,6 +96,7 @@ export class LiveStore {
   private status: LiveData['status'] = 'connecting';
   private error = '';
   private identity = '';
+  private lastClock: { ds: string; now: number; at: number } | null = null;
 
   constructor(private uri = SPACETIME_URI, private db = SPACETIME_DB) {}
 
@@ -180,6 +187,10 @@ export class LiveStore {
     this.ensureDatasetSubscription(active?.datasetId ?? null);
     const ds = this.subscribedDs;
     const mine = <T extends { datasetId: string }>(rows: Iterable<T>) => (ds ? [...rows].filter((r) => r.datasetId === ds) : []);
+    const clock = active ? [...db.simClock.iter()].find((c) => c.datasetId === active.datasetId) : undefined;
+    if (clock && (this.lastClock?.ds !== clock.datasetId || this.lastClock.now !== clock.nowUnix)) {
+      this.lastClock = { ds: clock.datasetId, now: clock.nowUnix, at: Date.now() };
+    }
     const plans = mine(db.plan.iter());
     const planIds = new Set(plans.map((p) => p.planId));
     this.snapshot = {
@@ -188,7 +199,7 @@ export class LiveStore {
       identity: this.identity,
       datasets,
       dataset: active,
-      clock: active ? [...db.simClock.iter()].find((c) => c.datasetId === active.datasetId) : undefined,
+      clock,
       operators: [...db.operator.iter()],
       systems: mine(db.system.iter()),
       facilities: mine(db.facility.iter()),
@@ -204,6 +215,8 @@ export class LiveStore {
       planFacilities: [...db.planFacility.iter()].filter((f) => planIds.has(f.planId)),
       decisions: mine(db.decision.iter()),
       fleetSweep: mine(db.fleetSweep.iter()),
+      fleetRecommendations: mine(db.fleetRecommendation.iter()),
+      clockReceivedAtMs: this.lastClock?.at ?? Date.now(),
       ready: Boolean(active) && this.dsReady && this.subscribedDs === active?.datasetId,
     };
     for (const l of this.listeners) l();

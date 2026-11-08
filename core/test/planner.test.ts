@@ -57,6 +57,13 @@ describe('EVENT_9 worked example (README)', () => {
     expect(plan.stats.ms).toBeLessThan(1000);
   });
 
+  it('latest call time: the truck must still arrive before the 04:49 trip (75 min drive) -> call by +193 min', () => {
+    const plan = planSystem({ model, systemId: 'SX', nowUnix: ONSET, failures: [{ eventId: 'E9', facilityId: 'FAC_C', levelPct: 50, repairEndUnix: REPAIR_END }] });
+    expect(plan.facilities[0].latestDispatchUnix).toBe(ONSET + 193 * 60);
+    const noTrucks = planSystem({ model, systemId: 'SX', nowUnix: ONSET, failures: [{ eventId: 'E9', facilityId: 'FAC_C', levelPct: 50, repairEndUnix: REPAIR_END }], overrides: { noTrucks: true } });
+    expect(noTrucks.facilities[0].latestDispatchUnix).toBeNull();
+  });
+
   it('with no trucks the planner shuts in W_C2 at +125 min (~$1,958)', () => {
     const plan = planSystem({ model, systemId: 'SX', nowUnix: ONSET, failures: [{ eventId: 'E9', facilityId: 'FAC_C', levelPct: 50, repairEndUnix: REPAIR_END }], overrides: { noTrucks: true } });
     const f = plan.facilities[0];

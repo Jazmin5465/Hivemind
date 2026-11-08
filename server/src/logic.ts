@@ -7,6 +7,7 @@ import type { Grid } from '../../core/src/telemetry';
 import { analyze, facilitySnapshot, type AnalyzeOutput, type CommittedPlan } from '../../core/src/analyze';
 import type { FacilityPlan, PlanOverrides, SystemPlan } from '../../core/src/planner';
 import type { ValidateResult } from '../../core/src/validate';
+import { longTermAdvice, temporaryAdvice, watchList } from '../../core/src/fleetAdvice';
 
 export type Ctx = ReducerCtx<InferSchema<typeof spacetimedb>>;
 
@@ -241,6 +242,7 @@ function writeFacility(
     traceStepSec: f.levelTrace.stepSec,
     levelTrace: f.levelTrace.values,
     summary: f.summary,
+    latestDispatchUnix: f.latestDispatchUnix != null && Number.isFinite(f.latestDispatchUnix) ? Math.round(f.latestDispatchUnix) : 0,
   });
 }
 
@@ -344,7 +346,11 @@ export function recompute(ctx: Ctx, datasetId: string): AnalyzeOutput | null {
 
   // --- facility state for the map ---
   const alertFacilities = new Set(out.events.filter((e) => e.status === 'ongoing').map((e) => e.facilityId));
-  for (const s of facilitySnapshot(model, grid, now)) {
+  const snapshot = facilitySnapshot(model, grid, now);
+  const failing = new Set(out.events.filter((e) => e.status === 'ongoing' && e.category === 'pump_failure').map((e) => e.facilityId));
+  const watch = watchList(model, snapshot, failing);
+  const watchRank = new Map(watch.map((w, i) => [w.facilityId, { rank: i + 1, hours: w.hours }]));
+  for (const s of snapshot) {
     const key = `${datasetId}/${s.facilityId}`;
     const row = {
       key,
@@ -365,11 +371,14 @@ export function recompute(ctx: Ctx, datasetId: string): AnalyzeOutput | null {
       wellIds: s.wellIds,
       wellStatus: s.wellStatus,
       wellWaterBpd: s.wellWaterBpd,
+      watchHours: watchRank.get(s.facilityId)?.hours ?? -1,
+      watchRank: watchRank.get(s.facilityId)?.rank ?? 0,
     };
     if (ctx.db.facilityState.key.find(key)) ctx.db.facilityState.key.update(row);
     else ctx.db.facilityState.insert(row);
   }
 
+  writeFleetAdvice(ctx, datasetId, model, now);
   if (d.detector !== out.detectorUsed) ctx.db.dataset.datasetId.update({ ...d, detector: out.detectorUsed });
   const ms = Math.max(0, Math.round(nowMs() - t0));
   ctx.db.simClock.datasetId.update({ ...clock, computedForUnix: now, computeMs: ms });
@@ -411,6 +420,7 @@ export function deleteDatasetRows(ctx: Ctx, datasetId: string, keepClockAndColla
   delAll(ctx.db.whatifResult.datasetId.filter(datasetId), (r) => ctx.db.whatifResult.requestId.delete(r.requestId));
   delAll(ctx.db.injectedFailure.datasetId.filter(datasetId), (r) => ctx.db.injectedFailure.id.delete(r.id));
   delAll(ctx.db.fleetSweep.datasetId.filter(datasetId), (r) => ctx.db.fleetSweep.key.delete(r.key));
+  delAll(ctx.db.fleetRecommendation.datasetId.filter(datasetId), (r) => ctx.db.fleetRecommendation.key.delete(r.key));
   ctx.db.opsConfig.datasetId.delete(datasetId);
   ctx.db.datasetRaw.datasetId.delete(datasetId);
   ctx.db.mlStatus.datasetId.delete(datasetId);
@@ -419,4 +429,29 @@ export function deleteDatasetRows(ctx: Ctx, datasetId: string, keepClockAndColla
     delAll(ctx.db.claim.datasetId.filter(datasetId), (r) => ctx.db.claim.eventId.delete(r.eventId));
   }
   dropCache(datasetId);
+}
+
+/** Temporary borrowing (trucks free at the clock) + the long-term move (from fleet_sweep). Rewrites only on change. */
+export function writeFleetAdvice(ctx: Ctx, datasetId: string, model: DatasetModel, now: number) {
+  const busy = new Map<string, number>();
+  for (const c of committedPlans(ctx, datasetId)) {
+    if (c.planStartUnix > now) continue;
+    busy.set(c.systemId, (busy.get(c.systemId) ?? 0) + c.truckFreeAtUnix.filter((t) => t > now).length);
+  }
+  const standby = new Map(model.systems.map((s) => [s.id, Math.max(0, s.fleetSize - (busy.get(s.id) ?? 0))]));
+  const sweep = [...ctx.db.fleetSweep.datasetId.filter(datasetId)];
+  const advice = [...temporaryAdvice(model, standby)];
+  const lt = longTermAdvice(model, sweep);
+  if (lt) advice.push(lt);
+  const want = new Map(advice.map((a) => [`${datasetId}/${a.kind}/${a.fromSystem}/${a.toSystem}`, a]));
+  const have = [...ctx.db.fleetRecommendation.datasetId.filter(datasetId)];
+  for (const r of have) {
+    const w = want.get(r.key);
+    if (!w) ctx.db.fleetRecommendation.key.delete(r.key);
+    else if (w.reason !== r.reason) ctx.db.fleetRecommendation.key.update({ ...r, reason: w.reason, km: w.km, savings: w.savings, asOfUnix: now });
+  }
+  for (const [key, a] of want) {
+    if (have.some((r) => r.key === key)) continue;
+    ctx.db.fleetRecommendation.insert({ key, datasetId, kind: a.kind, fromSystem: a.fromSystem, toSystem: a.toSystem, km: Number.isFinite(a.km) ? a.km : 0, reason: a.reason, savings: a.savings, asOfUnix: now });
+  }
 }

@@ -33,4 +33,5 @@ export default __t.row({
   traceStepSec: __t.u32().name("trace_step_sec"),
   levelTrace: __t.array(__t.f64()).name("level_trace"),
   summary: __t.string(),
+  latestDispatchUnix: __t.u32().name("latest_dispatch_unix"),
 });

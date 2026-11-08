@@ -55,7 +55,7 @@ describe('dashboard on live data', () => {
   it('shows backend alerts with the backend countdown', () => {
     const { store } = fakeStore(base());
     render(<LiveProvider store={store}><Dashboard /></LiveProvider>);
-    expect(screen.getByRole('button', { name: 'Evaluate S1_FACILITY_A — Pump failure' })).toHaveTextContent('02:00:00');
+    expect(screen.getByRole('button', { name: 'Evaluate S1_FACILITY_A — Pump failure' })).toHaveTextContent(/02:00:00|01:59:5\d/); // ticks in real time
     expect(screen.getByRole('button', { name: 'Evaluate S1_FACILITY_B — Pipeline leak' })).toHaveTextContent('Active leak');
   });
 

@@ -1,8 +1,7 @@
-// Pure functions: live SpacetimeDB snapshot -> what the pages render. No calculations of
-// detection, countdowns or plan costs happen here; those come from the backend as-is.
-// The only browser-side numbers are display conversions and the "proactive watch" what-if
-// (time to shutdown if a healthy pump stopped now), which uses live readings.
-import type { Decision, Event, Facility, FleetSweep, Plan, PlanFacility } from '@/module_bindings/types';
+// Pure functions: live SpacetimeDB snapshot -> what the pages render. Detection, countdowns,
+// proactive watch, plan options/costs and fleet advice all come from the backend as-is; this
+// file only maps rows to display shapes (plus real-time ticking between backend updates).
+import type { Decision, Event, Facility, Plan, PlanFacility } from '@/module_bindings/types';
 import type { LiveData } from './store';
 
 export type Severity = 'critical' | 'high' | 'medium';
@@ -38,6 +37,24 @@ export const fmtCountdown = (seconds: number) => {
 };
 
 export const nowOf = (live: LiveData) => live.clock?.nowUnix ?? live.dataset?.tEnd ?? 0;
+
+/**
+ * The backend clock, advanced in real time since its last update (1 s per second) while the
+ * clock is paused, so countdowns and truck progress move between backend recomputes. When the
+ * backend clock is playing it already moves, so it is used as is.
+ */
+export function effectiveNow(live: LiveData, realNowMs: number = Date.now()): number {
+  const base = nowOf(live);
+  if (!live.clock || live.clock.playing) return base;
+  // count from when the backend set the clock (same for every operator, survives reloads);
+  // older clock rows without that time fall back to when this browser received the value
+  const setAtMs = live.clock.nowSetAtMicros > 0n ? Number(live.clock.nowSetAtMicros / 1000n) : live.clockReceivedAtMs;
+  return base + Math.max(0, (realNowMs - setAtMs) / 1000);
+}
+
+/** a backend countdown (seconds as of the backend clock) ticked to `now` */
+export const tickSeconds = (live: LiveData, seconds: number | undefined, now: number) =>
+  seconds === undefined ? undefined : Math.max(0, seconds - (now - nowOf(live)));
 export const thresholdsOf = (live: LiveData) => ({ warning: live.opsConfig?.warningPct ?? 0, shutdown: live.opsConfig?.shutdownPct ?? 0 });
 
 /** active (not revoked) decisions */
@@ -71,39 +88,25 @@ function alertItem(e: Event): PriorityItem {
   };
 }
 
-/** seconds until a tank reaches shutdown if its pump stopped now (live level + live inflow) */
-export function secondsToShutdownIfPumpStops(levelPct: number, capacityBbl: number, inflowBpd: number, shutdownPct: number) {
-  if (!(inflowBpd > 0) || !(capacityBbl > 0) || !Number.isFinite(levelPct)) return Infinity;
-  const ratePctPerHour = (inflowBpd / 24 / capacityBbl) * 100;
-  return (Math.max(0, shutdownPct - levelPct) / ratePctPerHour) * 3600;
-}
-
-/** Proactive watch: the 3 healthy tanks that would shut in soonest if their pump stopped now. */
-export function watchItems(live: LiveData, limit = 3): PriorityItem[] {
-  const { shutdown } = thresholdsOf(live);
-  const failing = new Set(live.events.filter((e) => e.status === 'ongoing' && e.category === 'pump_failure').map((e) => e.facilityId));
+/** Proactive watch (backend): the healthy tanks that would shut in soonest if their pump stopped now. */
+export function watchItems(live: LiveData): PriorityItem[] {
   const now = nowOf(live);
   return live.facilityStates
-    .filter((s) => !failing.has(s.facilityId))
-    .map((s): PriorityItem => {
-      const f = live.facilities.find((x) => x.facilityId === s.facilityId);
-      return {
-        id: `watch:${s.facilityId}`,
-        asset: f?.tankId ?? s.facilityId,
-        facility: s.facilityId,
-        systemId: s.systemId,
-        category: 'tank_fill',
-        onset: now,
-        scenario: true,
-        title: 'Tank fill exposure',
-        severity: 'medium',
-        seconds: secondsToShutdownIfPumpStops(s.levelPct, f?.capacityBbl ?? 0, s.inflowBpd, shutdown),
-        detail: 'If the pump stops · constant inflow scenario',
-      };
-    })
-    .filter((i) => Number.isFinite(i.seconds))
-    .sort((a, b) => (a.seconds ?? Infinity) - (b.seconds ?? Infinity))
-    .slice(0, limit);
+    .filter((s) => s.watchRank > 0 && s.watchHours >= 0)
+    .sort((a, b) => a.watchRank - b.watchRank)
+    .map((s): PriorityItem => ({
+      id: `watch:${s.facilityId}`,
+      asset: live.facilities.find((x) => x.facilityId === s.facilityId)?.tankId ?? s.facilityId,
+      facility: s.facilityId,
+      systemId: s.systemId,
+      category: 'tank_fill',
+      onset: now,
+      scenario: true,
+      title: 'Tank fill exposure',
+      severity: 'medium',
+      seconds: s.watchHours * 3600,
+      detail: 'If the pump stops · constant inflow scenario',
+    }));
 }
 
 /** Live alerts in the backend's SPEC order (alertRank), then proactive watch items. */
@@ -140,6 +143,10 @@ export interface DecisionPlan {
   lines: { facilityId: string; summary: string }[];
   valid: boolean;
   errors: string[];
+  /** plans with trucks: latest time the dispatch can be called and still prevent the shutdown (earliest facility) */
+  latestDispatchUnix?: number | undefined;
+  /** first truck arrival if called at plan start */
+  firstArrivalUnix?: number | undefined;
 }
 
 /** Jazmin's option names, chosen from what the plan actually does */
@@ -171,8 +178,26 @@ export function planToOption(live: LiveData, p: Plan): DecisionPlan {
     lines: facs.map((f) => ({ facilityId: f.facilityId, summary: f.summary })),
     valid: p.valid,
     errors: p.validationErrors,
+    latestDispatchUnix: minPositive(facs.map((f) => f.latestDispatchUnix)),
+    firstArrivalUnix: minPositive(facs.flatMap((f) => f.truckArrivalsUnix)),
   };
 }
+
+/** drop options identical to an earlier one (e.g. the optimal plan IS the trucks-only plan) */
+export function dedupeOptions(options: DecisionPlan[]): DecisionPlan[] {
+  const seen = new Set<string>();
+  return options.filter((o) => {
+    const key = `${Math.round(o.cost)}|${o.lines.map((l) => `${l.facilityId}:${l.summary}`).join(';')}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+const minPositive = (xs: number[]) => {
+  const v = xs.filter((x) => x > 0);
+  return v.length ? Math.min(...v) : undefined;
+};
 
 /** The 4 options this operator requested for a system (newest batch), in a fixed order. */
 export function optionPlans(live: LiveData, systemId: string, scenarioFacilityId: string): Plan[] {
@@ -197,6 +222,8 @@ export const inspectOption = (category: Category): DecisionPlan => ({
   lines: [{ facilityId: '', summary: category === 'pipeline_leak' ? 'Urgent leak inspection · pump continues moving water' : 'Inspect pump wear · no alternate disposal needed' }],
   valid: true,
   errors: [],
+  latestDispatchUnix: undefined,
+  firstArrivalUnix: undefined,
 });
 
 /** the alternatives that were offered alongside a chosen plan (same request batch) */
@@ -222,11 +249,23 @@ export function fleets(live: LiveData): Fleet[] {
   }));
 }
 
-export type TruckStatus = { unit: string; status: 'Standby' | 'En route' | 'Hauling'; facility?: string; eta?: number; back?: number; trips?: number };
+export type TruckStatus = {
+  unit: string;
+  status: 'Standby' | 'En route' | 'Hauling';
+  facility?: string;
+  /** dispatched (plan start) */
+  dispatch?: number;
+  eta?: number;
+  back?: number;
+  trips?: number;
+  /** 0..1 through the whole job: dispatch -> back at the yard */
+  progress?: number;
+  /** 0..1 position of the arrival at the facility on that bar */
+  arrivalAt?: number;
+};
 
 /** Each truck's status from the APPROVED plans of the fleet's system (trucks dispatched at plan start). */
-export function fleetTrucks(live: LiveData, fleet: Fleet): TruckStatus[] {
-  const now = nowOf(live);
+export function fleetTrucks(live: LiveData, fleet: Fleet, now: number = nowOf(live)): TruckStatus[] {
   const trucks: TruckStatus[] = Array.from({ length: fleet.trucks }, (_, i) => ({ unit: `TRK-${fleet.id}-${String.fromCharCode(65 + i)}`, status: 'Standby' }));
   let next = 0;
   const approved = live.plans.filter((p) => p.status === 'approved' && p.systemId === fleet.id && !p.scenarioFacilityId).sort((a, b) => a.planStartUnix - b.planStartUnix);
@@ -237,7 +276,18 @@ export function fleetTrucks(live: LiveData, fleet: Fleet): TruckStatus[] {
       const back = pf?.truckFreeAtUnix[0] ?? eta;
       for (let k = 0; k < a.trucks && next < trucks.length; k++) {
         if (back <= now || p.planStartUnix > now) continue; // returned, or plan not started at this clock
-        trucks[next] = { unit: `TRK-${fleet.id}-${String.fromCharCode(65 + next)}`, status: now < eta ? 'En route' : 'Hauling', facility: a.facilityId, eta, back, trips: a.tripsPerTruck };
+        const span = Math.max(1, back - p.planStartUnix);
+        trucks[next] = {
+          unit: `TRK-${fleet.id}-${String.fromCharCode(65 + next)}`,
+          status: now < eta ? 'En route' : 'Hauling',
+          facility: a.facilityId,
+          dispatch: p.planStartUnix,
+          eta,
+          back,
+          trips: a.tripsPerTruck,
+          progress: Math.min(1, Math.max(0, (now - p.planStartUnix) / span)),
+          arrivalAt: Math.min(1, Math.max(0, (eta - p.planStartUnix) / span)),
+        };
         next++;
       }
     }
@@ -245,12 +295,6 @@ export function fleetTrucks(live: LiveData, fleet: Fleet): TruckStatus[] {
   return trucks;
 }
 
-export interface FleetLoad {
-  id: string;
-  trucks: number;
-  standby: number;
-  failures: number;
-}
 export interface Recommendation {
   kind: 'temporary' | 'long_term';
   from: string;
@@ -259,68 +303,14 @@ export interface Recommendation {
   reason: string;
 }
 
-function yardKm(live: LiveData, a: string, b: string) {
-  const p = live.systems.find((s) => s.systemId === a);
-  const q = live.systems.find((s) => s.systemId === b);
-  if (!p || !q) return Infinity;
-  const r = Math.PI / 180;
-  const dLat = (q.yardLat - p.yardLat) * r;
-  const dLon = (q.yardLon - p.yardLon) * r;
-  const h = Math.sin(dLat / 2) ** 2 + Math.cos(p.yardLat * r) * Math.cos(q.yardLat * r) * Math.sin(dLon / 2) ** 2;
-  return 6371 * 2 * Math.asin(Math.sqrt(h));
-}
-
-/** Right now: a fleet with every truck out borrows from the nearest fleet that keeps >= 1 on standby. */
-export function temporaryRecommendations(live: LiveData, loads: FleetLoad[]): Recommendation[] {
-  const recs: Recommendation[] = [];
-  for (const short of loads.filter((l) => l.trucks > 0 && l.standby === 0)) {
-    const donor = loads.filter((l) => l.id !== short.id && l.standby >= 2).sort((a, b) => yardKm(live, short.id, a.id) - yardKm(live, short.id, b.id))[0];
-    if (donor)
-      recs.push({
-        kind: 'temporary',
-        from: donor.id,
-        to: short.id,
-        km: yardKm(live, short.id, donor.id),
-        reason: `All ${short.trucks} ${short.id} trucks are dispatched; ${donor.id} has ${donor.standby} on standby and is the closest yard.`,
-      });
-  }
-  return recs;
+/** Fleet advice computed by the backend (fleet_recommendation table). */
+export function recommendations(live: LiveData): Recommendation[] {
+  return live.fleetRecommendations
+    .map((r) => ({ kind: r.kind as Recommendation['kind'], from: r.fromSystem, to: r.toSystem, km: r.km, reason: r.reason }))
+    .sort((a, b) => a.kind.localeCompare(b.kind) || a.to.localeCompare(b.to));
 }
 
 const usd = (v: number) => `$${Math.round(v).toLocaleString('en-US')}`;
-
-/**
- * Long term, from the backend's fleet sweep (the week's failures replayed per fleet size):
- * move one truck from the system that loses least with one fewer to the one that saves most
- * with one more, if the saving beats the loss.
- */
-export function longTermRecommendation(live: LiveData, sweep: FleetSweep[] = live.fleetSweep): Recommendation | null {
-  const bySys = new Map<string, FleetSweep[]>();
-  for (const r of sweep) bySys.set(r.systemId, [...(bySys.get(r.systemId) ?? []), r]);
-  const delta = [...bySys.entries()].map(([id, rows]) => {
-    const cur = rows.find((r) => r.isCurrent);
-    const cost = (n: number) => rows.find((r) => r.fleetSize === n)?.totalCost;
-    const plus = cur ? cost(cur.fleetSize + 1) : undefined;
-    const minus = cur && cur.fleetSize > 1 ? cost(cur.fleetSize - 1) : undefined;
-    return { id, cur, gain: cur && plus != null ? cur.totalCost - plus : 0, loss: cur && minus != null ? minus - cur.totalCost : Infinity };
-  });
-  const to = [...delta].sort((a, b) => b.gain - a.gain)[0];
-  const from = delta.filter((d) => d.id !== to?.id && Number.isFinite(d.loss)).sort((a, b) => a.loss - b.loss)[0];
-  if (!to || !from || !(to.gain > 0) || !(to.gain > from.loss)) return null;
-  return {
-    kind: 'long_term',
-    from: from.id,
-    to: to.id,
-    km: yardKm(live, to.id, from.id),
-    reason: `Replaying this dataset's ${to.cur?.failures ?? 0} ${to.id} pump failures: one more truck saves ${usd(to.gain)}; ${from.id} loses ${usd(from.loss)} with one fewer.`,
-  };
-}
-
-export function failureCounts(live: LiveData) {
-  const out: Record<string, number> = {};
-  for (const e of live.events) if (e.category === 'pump_failure') out[e.systemId] = (out[e.systemId] ?? 0) + 1;
-  return out;
-}
 
 // ---------- timeline ----------
 export interface HistoryNode {

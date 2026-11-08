@@ -77,7 +77,7 @@ For the map and the live readings, use `facility_state` instead. It holds the la
 `datasetId` (the folder name: `full_week`, `snapshot_…`, `mock_test_…`, `test`), `source`, `status` (`loading` | `ready` | `error`), `error`, `tStart`, `tEnd` (the recording's "now", the last ts in the telemetry), `stepSec` (300), `nSteps`, `seriesCount`, `rowCount`, **`active`** (exactly one dataset is active; the console should show that one), `loadVersion`, `loadedAt`, `detector` (`rules` | `ml`: what produced the current events).
 
 **`sim_clock`** (PK `datasetId`): the time-travel clock.
-`nowUnix` (everything else is computed as of this time), `playing`, `speed` (simulated seconds per real second), `carrySec`, `computedForUnix`, `computeMs`.
+`nowUnix` (everything else is computed as of this time), `playing`, `speed` (simulated seconds per real second), `carrySec`, `computedForUnix`, `computeMs`, `nowSetAtMicros` (server time when `nowUnix` was last set or the clock paused; the console ticks countdowns and truck progress in real time from here, so every operator sees the same value and a reload doesn't reset it).
 After a load, `nowUnix = tEnd`. Events, countdowns and plans are recomputed causally, using only data at or before `nowUnix`, whenever the clock moves.
 
 ### Network (from network.json)
@@ -98,7 +98,7 @@ Each facility has one tank, one pump and one pipeline. Their IDs are the columns
 ### Live state and telemetry
 
 **`facility_state`** (PK `key`): the latest readings at `sim_clock.nowUnix`, for the map.
-`facilityId`, `systemId`, `asOfUnix`, `levelPct`, `inflowBpd`, `pumpStatus` (0 stopped, 1 running, 2 fault), `pumpFlowBpd`, `dischargePsi`, `receiveFlowBpd`, `pipelinePressurePsi`, `wellsProducing`, `wellsTotal`, **`health`** (`ok` | `warning` (level ≥ warning) | `alert` (has an ongoing event)), and per-well arrays `wellIds`, `wellStatus` (1 producing, 0 shut in), `wellWaterBpd`.
+`facilityId`, `systemId`, `asOfUnix`, `levelPct`, `inflowBpd`, `pumpStatus` (0 stopped, 1 running, 2 fault), `pumpFlowBpd`, `dischargePsi`, `receiveFlowBpd`, `pipelinePressurePsi`, `wellsProducing`, `wellsTotal`, **`health`** (`ok` | `warning` (level ≥ warning) | `alert` (has an ongoing event)), and per-well arrays `wellIds`, `wellStatus` (1 producing, 0 shut in), `wellWaterBpd`. **Proactive watch** (computed by the backend): `watchHours` = hours until shutdown if this pump stopped now (live level and inflow; -1 = n/a), `watchRank` = position in the watch list (1 = soonest of the top 3 healthy tanks; 0 = not listed).
 
 **`series`** (PK `id`): telemetry as chunked arrays. One row per (asset, metric, day).
 `datasetId`, `assetId`, `metric`, `chunkIdx`, `t0` (ts of `values[0]`), `stepSec`, `values: number[]` (`NaN` = missing). The timestamp of `values[i]` is `t0 + i * stepSec`. Concatenate rows by `chunkIdx` to get a full series. **Only plot points with ts ≤ `sim_clock.nowUnix`**: the rows hold the whole recording, and the clock decides what counts as "now".
@@ -161,7 +161,7 @@ When the ML sidecar has run, there are also per-step probabilities: `ml_p_failur
 `planId`, `eventId`, `facilityId`, `type` (`dispatch_truck` | `shut_in_wells` | `none` | `field_inspection`), `trucks`, `tripsPerTruck`, `wells: string[]`, `startAfterMin` (minutes after `planStartUnix`), `assetId`.
 
 **`plan_facility`** (PK `id`): the per-facility outcome, used for the what-if chart.
-`planId`, `eventId`, `facilityId`, `cost`, `truckCost`, `shutInCost`, `tripCost` (lost revenue if it still trips), `doNothingCost`, `tripsAtUnix?` (empty = trip prevented), `tripsAtUnixIfNothing?`, `peakLevelPct`, `repairEndUnix`, `levelAtStartPct`, `truckArrivalsUnix: number[]`, `truckFreeAtUnix: number[]`, **`levelTrace: number[]`** (the projected tank level every `traceStepSec` seconds from `traceT0` until the repair ends), `summary`.
+`planId`, `eventId`, `facilityId`, `cost`, `truckCost`, `shutInCost`, `tripCost` (lost revenue if it still trips), `doNothingCost`, `tripsAtUnix?` (empty = trip prevented), `tripsAtUnixIfNothing?`, `peakLevelPct`, `repairEndUnix`, `levelAtStartPct`, `truckArrivalsUnix: number[]`, `truckFreeAtUnix: number[]`, **`levelTrace: number[]`** (the projected tank level every `traceStepSec` seconds from `traceT0` until the repair ends), `summary`, `latestDispatchUnix` (plans with trucks: the latest time the same dispatch can be called and still prevent the shutdown, with every trip before the repair ends; 0 = n/a).
 
 **`whatif_request`** and **`whatif_result`** (PK `requestId`): `whatif_result` has `status` (`done` | `error`), `error`, `planId?` (the what-if plan), `baselinePlanId?`, `totalCost`, `baselineCost`, `deltaCost`. Match a result to your request through `whatif_request.requestedBy` = your identity (the newest row).
 
@@ -171,6 +171,9 @@ When the ML sidecar has run, there are also per-step probabilities: `ml_p_failur
 **`decision`** (PK `id`): the shared log of operator decisions. The alerts queue hides decided items; the timeline and fleet status read it.
 `datasetId`, `eventId`, `systemId`, `facilityId`, `kind` (`plan` = plan approved \| `inspection` = inspector sent \| `contingency` = plan picked for a hypothetical failure), `optionKey`, `planId?`, `title`, `detail`, `estimatedCost` (this facility's share), `status` (`active` \| `revoked`), `decidedBy`, `operatorName`, `asOfUnix` (sim clock), `createdAt`.
 Approving a joint plan writes one row per failure it covers. Rejecting an approved plan revokes its rows.
+
+**`fleet_recommendation`** (PK `key`): fleet advice at the clock, computed by the backend.
+`kind` (`temporary` = a system with every truck out borrows one from the nearest system with ≥ 2 on standby; `long_term` = move one truck permanently, from `fleet_sweep`), `fromSystem`, `toSystem`, `km` (between the truck yards), `reason`, `savings` (long term: $ saved by the receiving system), `asOfUnix`.
 
 ### Multiplayer
 
@@ -233,6 +236,7 @@ Worker-only reducers (`loadDataset*`, `ml*`, `agent*`, `registerWorker`, `setWor
 - **Demo:** `injectFailure(ds, 'S1_FACILITY_A')` creates a new ongoing failure with a countdown and a plan within one transaction.
 
 ## Changelog
+- v1.3 (2026-11-08 04:30): + `sim_clock.nowSetAtMicros`, `facility_state.watchHours` / `watchRank`, `plan_facility.latestDispatchUnix`, `fleet_recommendation` table (proactive watch and fleet advice moved from the browser into the backend).
 - v1.2 (2026-11-08 03:00): + `decision` table, `plan.optionKey` / `plan.scenarioFacilityId`, `requestPlanOptions`, `selectContingency`, `sendInspector`, `revokeDecision`; `approvePlan` logs decisions; the fleet sweep runs automatically on load. Bindings now in `frontend/src/module_bindings`.
 - v1.1 (2026-11-07 23:30): + `fleet_sweep` table, `runFleetSweep`, `injectSystemOutage`.
 - v1 (2026-11-07 23:00): first version.

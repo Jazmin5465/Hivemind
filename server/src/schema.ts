@@ -82,6 +82,8 @@ const simClock = table(
     /** last recompute_events run for this clock value */
     computedForUnix: t.u32(),
     computeMs: t.u32(),
+    /** server time (micros) when nowUnix was last set or the clock paused: clients tick in real time from here */
+    nowSetAtMicros: t.u64().default(0n),
   },
 );
 
@@ -233,6 +235,10 @@ const facilityState = table(
     wellIds: t.array(t.string()).default([]),
     wellStatus: t.array(t.f64()).default([]),
     wellWaterBpd: t.array(t.f64()).default([]),
+    /** proactive watch: hours to shutdown if this pump stopped now (live level + live inflow); -1 = n/a */
+    watchHours: t.f64().default(-1),
+    /** position in the proactive-watch list (1 = soonest); 0 = not on the list (top 3 healthy tanks) */
+    watchRank: t.u32().default(0),
   },
 );
 
@@ -372,6 +378,8 @@ const planFacility = table(
     traceStepSec: t.u32(),
     levelTrace: t.array(t.f64()),
     summary: t.string(),
+    /** plans with trucks: latest unix time the same dispatch can be called and still prevent the shutdown; 0 = n/a */
+    latestDispatchUnix: t.u32().default(0),
   },
 );
 
@@ -551,6 +559,22 @@ const mlStatus = table(
   },
 );
 
+/** Fleet advice at the clock: 'temporary' truck borrowing and the 'long_term' move (from fleet_sweep). */
+const fleetRecommendation = table(
+  { name: 'fleet_recommendation', public: true },
+  {
+    key: t.string().primaryKey(), // `${datasetId}/${kind}/${fromSystem}/${toSystem}`
+    datasetId: t.string().index('btree'),
+    kind: t.string(), // temporary | long_term
+    fromSystem: t.string(),
+    toSystem: t.string(),
+    km: t.f64(), // distance between the two truck yards
+    reason: t.string(),
+    savings: t.f64(), // long term: $ saved by the receiving system with one more truck
+    asOfUnix: t.u32(),
+  },
+);
+
 /** "How big should the fleet be?" — replay of the week's pump failures per fleet size (run_fleet_sweep). */
 const fleetSweep = table(
   { name: 'fleet_sweep', public: true },
@@ -617,6 +641,7 @@ const spacetimedb = schema({
   decision,
   mlStatus,
   fleetSweep,
+  fleetRecommendation,
   admin,
   workerKey,
 });

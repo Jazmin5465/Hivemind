@@ -18,4 +18,5 @@ export default __t.row({
   carrySec: __t.f64().name("carry_sec"),
   computedForUnix: __t.u32().name("computed_for_unix"),
   computeMs: __t.u32().name("compute_ms"),
+  nowSetAtMicros: __t.u64().name("now_set_at_micros"),
 });

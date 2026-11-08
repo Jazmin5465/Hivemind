@@ -91,6 +91,7 @@ import EventRow from "./event_table";
 import EventEvidenceRow from "./event_evidence_table";
 import FacilityRow from "./facility_table";
 import FacilityStateRow from "./facility_state_table";
+import FleetRecommendationRow from "./fleet_recommendation_table";
 import FleetSweepRow from "./fleet_sweep_table";
 import HandoffRow from "./handoff_table";
 import InjectedFailureRow from "./injected_failure_table";
@@ -270,6 +271,20 @@ const tablesSchema = __schema({
       { name: 'facility_state_key_key', constraint: 'unique', columns: ['key'] },
     ],
   }, FacilityStateRow),
+  fleetRecommendation: __table({
+    name: 'fleet_recommendation',
+    indexes: [
+      { accessor: 'datasetId', name: 'fleet_recommendation_dataset_id_idx_btree', algorithm: 'btree', columns: [
+        'datasetId',
+      ] },
+      { accessor: 'key', name: 'fleet_recommendation_key_idx_btree', algorithm: 'btree', columns: [
+        'key',
+      ] },
+    ],
+    constraints: [
+      { name: 'fleet_recommendation_key_key', constraint: 'unique', columns: ['key'] },
+    ],
+  }, FleetRecommendationRow),
   fleetSweep: __table({
     name: 'fleet_sweep',
     indexes: [
