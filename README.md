@@ -6,8 +6,8 @@ Hivemind finds pump failures, pipeline leaks and worn pumps in raw sensor data, 
 
 | | |
 |---|---|
-| **Devpost** | [DEVPOST_LINK_HERE](DEVPOST_LINK_HERE) |
-| **Demo video** | [YOUTUBE_LINK_HERE](YOUTUBE_LINK_HERE) |
+| **Devpost** | [DEVPOST_LINK_HERE](https://devpost.com/software/hivemind-lnhy8g?ref_content=user-portfolio&ref_feature=in_progress) |
+| **Demo video** | [YOUTUBE_LINK_HERE](https://www.youtube.com/watch?v=tDWAyvH1agU) |
 | **Tracks** | EOG *Beat the Shutdown* · NVIDIA Nemotron *beyond a chatbot* · SpacetimeDB |
 
 [![Watch the Hivemind demo](https://img.youtube.com/vi/YOUTUBE_VIDEO_ID/maxresdefault.jpg)](YOUTUBE_LINK_HERE)
