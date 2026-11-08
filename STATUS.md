@@ -38,6 +38,18 @@ _Last updated: 2026-11-07 23:40 CT · 9 PM–2 AM milestones done · ML integrat
 - **Storage benchmark** (full week, local): chunked load 0.25 s vs row-per-reading 1.4 s; subscribe to the whole week 40 ms / 1,680 rows vs 679 ms / 393,120 rows; one series 2 ms / 7 rows vs 16 ms / 2,016 rows.
 - **Drill 2 (23:03):** flip with an unseen synthetic network (`--folder data/synth/week_09004`, 17 facilities): 2 s.
 
+## ML model check (2026-11-08 01:50)
+- `integration` (Hadent): backend + `ml/` (sidecar, model `lgbm-synth-fc09a1e5`, training code). Checked out locally; tsc, 38 tests, 170/170 eval pass.
+- Synthetic weeks: seeds 1000–1002 (in the current model's training range) + 8 held-out (9001–9004, 9101–9104).
+  - Rules: 140/140 events, 0 false alarms.
+  - Current ML: held-out 97/97, 0 false alarms; training range 43/43, 2 false alarms (a weak leak signal on one pipeline in week_01002).
+- ML hysteresis change: leak/worn-pump events now need 30 min above threshold (was 15). This removed 2 short-blip false alarms, with no delay on the real data.
+- **Retrained candidate** `lgbm-synth-2d501c9d` (80 weeks, seeds 1000–1079), kept in `data/ml-candidate/`; `ml/model/` untouched.
+  - Held-out synthetic: tied (97/97, 0 FA).
+  - Real data: **1 new false alarm** on full_week and every snapshot.
+  - **Decision: keep Hadent's current model.**
+- LLM: provider `brev`, key in `LLM_API_KEY`. Brev CLI installed on this laptop (v0.6.337); waiting on `brev login`, then `brev port-forward <instance> --port 8000:8000` → `LLM_BASE_URL=http://127.0.0.1:8000/v1`, and `LLM_MODEL` = the name from `/v1/models`.
+
 ## Contradictions / ambiguities with the spec or the EOG docs (please review)
 1. ~~Plans $15–27 cheaper than the reference~~ **Fixed (23:40): plans now match the key exactly.** The key plans from the level rounded to 0.1 points (its `level_final_pct` precision), and at onset it uses the simulator's set level. We now plan from the de-noised level (fixed-slope fit since onset) rounded to 0.1. Result: all 3 snapshot system plans equal the reference to the dollar ($3,108 / $1,810 / $3,095), with identical shut-in minutes. All 13 full-week replay plans are identical (the total differs by $1 only because the key's `~$` figures are rounded).
 2. **"Accept the trip" plans.** We only consider plans that prevent the trip, or doing nothing, matching SPEC ("cheapest plan that keeps the tank from tripping, or accept the trip"). Partial plans (trucks that only delay the trip) are not searched. No reference plan in the history data needs them.
