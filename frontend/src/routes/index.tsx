@@ -1,13 +1,14 @@
 import { createFileRoute } from '@tanstack/react-router';
 import { useEffect, useState } from 'react';
-import { ArrowRight, Droplets, Wrench, Truck, CircleAlert, Check } from 'lucide-react';
+import { ArrowRight, Droplets, Wrench, Truck, CircleAlert, Check, Bot, Send, ScrollText } from 'lucide-react';
+import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { useLive, useLiveActions } from '@/components/LiveProvider';
 import { FleetPanel } from '@/components/FleetPanel';
 import {
-  dedupeOptions, effectiveNow, fixFor, fleets as liveFleets, fleetTrucks, fmtCountdown, formatTime, inspectOption, nowOf, optionPlans,
+  agentBriefing, agentQuestions, dedupeOptions, effectiveNow, fixFor, fleets as liveFleets, latestHandoff, parseSequence, whyFlagged, fleetTrucks, fmtCountdown, formatTime, inspectOption, nowOf, optionPlans,
   pendingPriority, planToOption, priorityQueue, recommendations, tickSeconds, type DecisionPlan, type Fleet, type PriorityItem,
 } from '@/lib/live/derive';
 import type { LiveData } from '@/lib/live/store';
@@ -58,6 +59,7 @@ function Dashboard() {
     </section>
     <section><h2 className="mb-4 text-lg font-semibold">Emergency fleets</h2><div className="flex gap-3 overflow-x-auto pb-3">{fleets.map(f=>{const busy=fleetTrucks(live,f,now).filter(t=>t.status!=='Standby').length;return <Button key={f.id} variant="outline" aria-expanded={fleetId===f.id} onClick={()=>setFleetId(fleetId===f.id?null:f.id)} className={`fleet-card h-auto min-w-52 flex-col items-start rounded-md border-border bg-card p-4 text-left shadow-none ${fleetId===f.id?'border-accent':''}`}><span className="font-mono text-sm">{f.name}</span><span className="flex items-center gap-2 text-sm text-muted-foreground"><Truck/>{f.trucks-busy} of {f.trucks} trucks available</span><span className="text-xs text-muted-foreground">{busy?`${busy} dispatched`:'All at yard'}</span></Button>;})}</div>{openFleet&&<FleetPanel fleet={openFleet} now={now} close={()=>setFleetId(null)}/>}</section>
     <FleetRecommendations live={live}/>
+    <Assistant live={live}/>
     <Dialog open={Boolean(selected)} onOpenChange={open=>{if(!open)setSelected(null);}}><DialogContent className="max-h-[90dvh] w-[calc(100%-2rem)] max-w-4xl overflow-y-auto bg-popover">{selected&&<DecisionModal key={selected.id} item={selected} close={()=>setSelected(null)}/>}</DialogContent></Dialog>
   </main>;
 }
@@ -119,6 +121,7 @@ function DecisionModal({item,close}:{item:PriorityItem;close:()=>void}) {
       <DialogTitle className="flex flex-wrap items-center gap-2 break-words leading-relaxed">{item.facility} · Remediation plan for {item.title.toLowerCase()}</DialogTitle>
       <DialogDescription className="font-mono text-xs">{!inspect?`${(repairHours??0).toFixed(1)}h repair window · ${fleetSize} trucks in fleet${covered>1?` · joint plan for ${covered} pump failures in ${item.systemId}`:''}${item.scenario?' · contingency if this pump fails now':''}`:item.category==='pipeline_leak'?'Pipeline leak · pump continues moving water':'Pump wear · no alternate disposal needed'}</DialogDescription>
     </DialogHeader>
+    <WhyFlagged live={live} eventId={item.eventId}/>
     {!requested||(!inspect&&!plans.length&&!error)?<p role="status" className="py-6 text-center text-sm text-muted-foreground">Calculating options with the planner…</p>:
     <RadioGroup value={choice ?? null} onValueChange={value=>setChoice(value)} className="grid gap-3 sm:grid-cols-2">
       {ordered.map(p=>{const isBest=p.key===best?.key&&p.key!=='inspect';const selected=choice===p.key;
@@ -128,7 +131,7 @@ function DecisionModal({item,close}:{item:PriorityItem;close:()=>void}) {
             <RadioGroupItem id={`plan-${p.key}`} value={p.key}/>
           </span>
           {p.key==='inspect'
-            ?<><span className="mt-2 block text-sm text-muted-foreground">Dispatch an inspector to the site</span><CostReasoning live={live} eventId={item.eventId} optionKey="inspect"/></>
+            ?<><span className="mt-2 block text-sm text-muted-foreground">Dispatch an inspector to the site</span><CostReasoning live={live} eventId={item.eventId} optionKey="inspect"/><NextSteps live={live} eventId={item.eventId} optionKey="inspect"/><NextSteps live={live} eventId={item.eventId} optionKey="monitor" title="If not inspected (trend projection)"/></>
             :<>
               <span className={`mt-3 block font-mono text-2xl ${isBest?'text-ok':''}`}>${Math.round(p.cost).toLocaleString()}</span>
               <span className="block text-xs text-muted-foreground">{p.truckingCost>0?`$${Math.round(p.revenueLoss).toLocaleString()} lost sales + $${Math.round(p.truckingCost).toLocaleString()} hauling`:'Lost sales'}</span>
@@ -137,9 +140,11 @@ function DecisionModal({item,close}:{item:PriorityItem;close:()=>void}) {
               {item.scenario&&selected&&p.trucks>0&&p.latestDispatchUnix!==undefined&&<span className="mt-2 block rounded border border-accent/50 bg-accent/10 px-2 py-1.5 font-mono text-xs"><span className="block text-accent">Estimated dispatch: call trucks by {formatTime(p.latestDispatchUnix)}</span><span className="block text-muted-foreground">Latest call that still prevents the shutdown if this pump fails now{p.firstArrivalUnix!==undefined?` · if called now, first truck arrives ${formatTime(p.firstArrivalUnix)}`:''}</span></span>}
               {!p.valid&&<span className="mt-2 block text-xs text-destructive">{p.errors.join('; ')}</span>}
               <CostReasoning live={live} eventId={item.eventId} optionKey={p.key} facility={item.facility} joint={p.lines.length>1}/>
+              <NextSteps live={live} eventId={item.eventId} optionKey={p.key} title={p.lines.length>1?`What happens next at ${item.facility}`:undefined}/>
             </>}
         </label>;})}
     </RadioGroup>}
+    <AgentBriefing live={live} eventId={item.eventId}/>
     {error&&<p role="alert" className="text-sm text-destructive">{error}</p>}
     <div className="flex justify-end gap-2 border-t border-border pt-4"><Button variant="ghost" onClick={close}>Cancel</Button><Button disabled={!choice||busy||!plans.length} onClick={()=>void submit()}>{busy?'Saving…':'Submit'}</Button></div>
   </>;
@@ -153,4 +158,70 @@ function CostReasoning({live,eventId,optionKey,facility,joint}:{live:LiveData;ev
     <span className="block font-mono text-[10px] uppercase tracking-wider text-muted-foreground">{joint&&facility?`How ${facility}'s share is worked out`:'How the cost is worked out'}</span>
     <span className="mt-1 block leading-relaxed text-muted-foreground">{fix.costReasoning}</span>
   </span>;
+}
+
+/** Why the alert was raised: Hadent's /explain drivers (SHAP) when available, else the detector's evidence. */
+function WhyFlagged({live,eventId}:{live:LiveData;eventId:string|undefined}) {
+  const why=whyFlagged(live,eventId);
+  if(!why.reasons.length)return null;
+  return <section aria-label="Why this was flagged" className="rounded-md border border-border bg-background/40 p-3">
+    <h3 className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">{why.source==='model'?'Why the model flagged this':'Why it was flagged'}</h3>
+    <ul className="mt-2 list-disc space-y-1 pl-5 text-sm">{why.reasons.map(r=><li key={r}>{r}</li>)}</ul>
+  </section>;
+}
+
+/** Hadent's /fixes predicted sequence for an option: what is expected to happen after it. */
+function NextSteps({live,eventId,optionKey,title}:{live:LiveData;eventId:string|undefined;optionKey:string;title?:string|undefined}) {
+  const fix=fixFor(live,eventId,optionKey);
+  if(!fix?.predictedSequence.length)return null;
+  return <span className="mt-2 block border-t border-border pt-2 text-xs">
+    <span className="block font-mono text-[10px] uppercase tracking-wider text-muted-foreground">{title??'What happens next'}</span>
+    <span className="mt-1 block space-y-1">{parseSequence(fix.predictedSequence).map((e,i)=><span key={i} className="flex gap-2 leading-relaxed"><span className="shrink-0 font-mono text-accent">{e.time}</span><span className="text-muted-foreground">{e.text}</span></span>)}</span>
+  </span>;
+}
+
+/** The Nemotron agent's briefing for this alert's system and the crew messages it drafted. */
+function AgentBriefing({live,eventId}:{live:LiveData;eventId:string|undefined}) {
+  const b=agentBriefing(live,eventId);
+  if(!b)return null;
+  return <section aria-label="Agent briefing" className="rounded-md border border-accent/50 bg-accent/5 p-3">
+    <h3 className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-wider text-accent"><Bot className="size-4"/>Nemotron agent{b.run.status==='running'?' · analyzing…':` · ${(b.run.latencyMs/1000).toFixed(1)} s`}</h3>
+    {b.run.summary&&<p className="mt-2 whitespace-pre-line text-sm leading-relaxed">{b.run.summary}</p>}
+    {b.messages.length>0&&<div className="mt-3">
+      <h4 className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">Drafted dispatch messages</h4>
+      <ul className="mt-1 space-y-1 text-xs">{b.messages.map(m=><li key={String(m.id)} className="rounded border border-border bg-background/40 px-2 py-1"><span className="font-mono text-accent">{m.recipient}:</span> {m.text}</li>)}</ul>
+    </div>}
+  </section>;
+}
+
+/** Ask the Nemotron agent in plain English, and read the latest shift handoff. */
+function Assistant({live}:{live:LiveData}) {
+  const actions=useLiveActions();
+  const [text,setText]=useState(''),[busy,setBusy]=useState(false),[error,setError]=useState('');
+  const ask=async(q:string)=>{
+    if(!q.trim())return;
+    setBusy(true);setError('');
+    try{await actions.askAgent(q.trim());setText('');}
+    catch(e){setError(e instanceof Error?e.message:'Unable to reach the agent');}
+    finally{setBusy(false);}
+  };
+  const qs=agentQuestions(live);
+  const handoff=latestHandoff(live);
+  return <section><h2 className="mb-4 flex items-center gap-2 text-lg font-semibold"><Bot className="size-5 text-accent"/>Night-shift assistant</h2><div className="grid gap-3 md:grid-cols-2">
+    <div className="rounded-md border border-border bg-card p-4">
+      <h3 className="mb-3 font-mono text-xs uppercase text-muted-foreground">Ask the agent</h3>
+      <form className="flex gap-2" onSubmit={e=>{e.preventDefault();void ask(text);}}>
+        <Input aria-label="Question for the agent" placeholder="e.g. What if we lose a truck?" value={text} onChange={e=>setText(e.target.value)} disabled={busy||!live.ready}/>
+        <Button type="submit" disabled={busy||!text.trim()||!live.ready} aria-label="Ask"><Send/></Button>
+      </form>
+      {error&&<p role="alert" className="mt-2 text-sm text-destructive">{error}</p>}
+      {qs.length?<ul className="mt-3 space-y-3">{qs.map(q=><li key={String(q.id)} className="text-sm"><p className="font-semibold">{q.askerName}: {q.text}</p><p className={`mt-1 whitespace-pre-line text-xs leading-relaxed ${q.status==='failed'?'text-destructive':'text-muted-foreground'}`}>{q.status==='pending'?'Agent is working on it…':q.answer}</p></li>)}</ul>
+      :<p className="mt-3 text-sm text-muted-foreground">No questions yet.</p>}
+    </div>
+    <div className="rounded-md border border-border bg-card p-4">
+      <div className="mb-3 flex items-center justify-between gap-2"><h3 className="font-mono text-xs uppercase text-muted-foreground">Shift handoff</h3><Button variant="outline" size="sm" disabled={busy||!live.ready} onClick={()=>void ask('Write the shift handoff.')}><ScrollText/>Write handoff</Button></div>
+      {handoff?<><p className="font-mono text-[10px] text-muted-foreground">{handoff.authorName} · {handoff.source} · as of {formatTime(handoff.asOfUnix)}</p><p className="mt-2 whitespace-pre-line text-sm leading-relaxed">{handoff.text}</p></>
+      :<p className="text-sm text-muted-foreground">No handoff yet. Ask the agent to write one.</p>}
+    </div>
+  </div></section>;
 }

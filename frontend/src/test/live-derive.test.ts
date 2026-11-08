@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  decisionNodes, dedupeOptions, effectiveNow, fixFor, fleetTrucks, historyNodes, mapModel, optionPlans, pendingPriority, planToOption, priorityQueue,
+  agentBriefing, decisionNodes, dedupeOptions, effectiveNow, fixFor, parseSequence, whyFlagged, fleetTrucks, historyNodes, mapModel, optionPlans, pendingPriority, planToOption, priorityQueue,
   recommendations, sortHistory, tickSeconds, watchItems,
 } from '@/lib/live/derive';
 import { action, decision, event, facility, identity, liveData, NOW, plan, planFacility, state, system, ts } from './live-fixtures';
@@ -104,6 +104,34 @@ describe('cost reasoning from the ML sidecar /fixes', () => {
   });
   it('a tank that needs no action explains it on the recommended option', () => {
     expect(fixFor(live, 'e2', 'optimal')?.costReasoning).toBe('No action needed');
+  });
+});
+
+describe('explanations on screen', () => {
+  const ev = (eventId: string, rank: number, source: string, text: string) => ({ id: BigInt(rank), eventId, datasetId: 'fixture', rank, text, source, feature: '', contribution: 0 }) as never;
+  it("prefers Hadent's model drivers (SHAP), else the detector evidence", () => {
+    const live = liveData({ evidence: [ev('e1', 1, 'rules', 'detector text'), ev('e1', 101, 'shap', 'Pipeline pressure 36 psi below normal'), ev('e2', 1, 'rules', 'only detector')] });
+    expect(whyFlagged(live, 'e1')).toEqual({ source: 'model', reasons: ['Pipeline pressure 36 psi below normal'] });
+    expect(whyFlagged(live, 'e2')).toEqual({ source: 'detector', reasons: ['only detector'] });
+    expect(whyFlagged(live, 'nope').source).toBe('none');
+  });
+  it('parses the predicted sequence into time + text (keeps labels like "After the repair")', () => {
+    expect(parseSequence(['2026-10-09T05:00Z - 2 trucks arrive and remove 300 bbl', 'After the repair - flow returns to normal'])).toEqual([
+      { time: '10-09 05:00 UTC', text: '2 trucks arrive and remove 300 bbl' },
+      { time: 'After the repair', text: 'flow returns to normal' },
+    ]);
+  });
+  it("shows the agent's latest briefing for the alert's system with its drafted messages", () => {
+    const run = (runId: string, eventId: string, t: bigint, trigger = 'event_new') => ({ runId, datasetId: 'fixture', eventId, trigger, status: 'done', provider: 'brev', model: 'm', summary: runId, error: '', planId: undefined, questionId: undefined, startedAt: ts(t), finishedAt: undefined, latencyMs: 2000 }) as never;
+    const live = liveData({
+      events: [event('f1', 'S1_FACILITY_A', 'S1', 'pump_failure'), event('f2', 'S1_FACILITY_B', 'S1', 'pump_failure'), event('l1', 'S2_FACILITY_A', 'S2', 'pipeline_leak')],
+      agentRuns: [run('old', 'f1', 1n), run('new', 'f2', 5n), run('q', 'f1', 9n, 'question'), run('leak', 'l1', 3n)],
+      dispatchMessages: [{ id: 1n, datasetId: 'fixture', planId: undefined, eventId: 'f2', recipient: 'truck crew S1', text: 'send 1 truck', agentRunId: 'new', createdAt: ts(6n) } as never],
+    });
+    const b = agentBriefing(live, 'f1'); // same system as f2 -> newest system run, never a Q&A run
+    expect(b?.run.runId).toBe('new');
+    expect(b?.messages.map((m) => m.text)).toEqual(['send 1 truck']);
+    expect(agentBriefing(live, 'l1')?.run.runId).toBe('leak');
   });
 });
 

@@ -194,6 +194,59 @@ export function fixFor(live: LiveData, eventId: string | undefined, key: string)
   return rows.find((f) => f.optionKey === key) ?? (key === 'optimal' ? rows.find((f) => f.optionKey === 'none_needed' || f.optionKey === 'wait') : undefined);
 }
 
+/**
+ * Why an alert was raised: Hadent's /explain drivers (SHAP, plain English) when the ML sidecar
+ * has explained it, otherwise the detector's own evidence.
+ */
+export function whyFlagged(live: LiveData, eventId: string | undefined): { source: 'model' | 'detector' | 'none'; reasons: string[] } {
+  if (!eventId) return { source: 'none', reasons: [] };
+  const rows = live.evidence.filter((x) => x.eventId === eventId).sort((a, b) => a.rank - b.rank);
+  const shap = rows.filter((r) => r.source === 'shap').map((r) => r.text);
+  if (shap.length) return { source: 'model', reasons: shap };
+  const det = rows.map((r) => r.text);
+  return det.length ? { source: 'detector', reasons: det } : { source: 'none', reasons: [] };
+}
+
+/** "2026-10-09T05:00Z - 2 trucks arrive ..." -> { time: "10-09 05:00 UTC", text } (labels like "After the repair -" kept) */
+export function parseSequence(entries: string[]): { time: string; text: string }[] {
+  return entries.map((e) => {
+    const m = e.match(/^(\d{4}-(\d{2}-\d{2})T(\d{2}:\d{2})Z?)\s*-\s*(.*)$/);
+    if (m) return { time: `${m[2]} ${m[3]} UTC`, text: m[4] ?? '' };
+    const l = e.match(/^([^-]{1,40}?)\s+-\s+(.*)$/);
+    return l ? { time: l[1] ?? '', text: l[2] ?? '' } : { time: '', text: e };
+  });
+}
+
+/**
+ * The Nemotron agent's latest briefing for an alert: the system run that covers this pump
+ * failure (any event of the same system), or the inspection run for a leak / worn pump,
+ * with the crew messages it drafted.
+ */
+export function agentBriefing(live: LiveData, eventId: string | undefined) {
+  if (!eventId) return undefined;
+  const ev = live.events.find((e) => e.eventId === eventId);
+  if (!ev) return undefined;
+  const sameScope = new Set(
+    ev.category === 'pump_failure'
+      ? live.events.filter((e) => e.systemId === ev.systemId && e.category === 'pump_failure').map((e) => e.eventId)
+      : [eventId],
+  );
+  const run = live.agentRuns
+    .filter((r) => sameScope.has(r.eventId) && r.trigger !== 'question' && r.trigger !== 'handoff' && r.status !== 'failed')
+    .sort((a, b) => Number(b.startedAt.microsSinceUnixEpoch - a.startedAt.microsSinceUnixEpoch))[0];
+  if (!run) return undefined;
+  const messages = live.dispatchMessages.filter((m) => m.agentRunId === run.runId).sort((a, b) => Number(a.id - b.id));
+  return { run, messages };
+}
+
+/** operator questions to the agent, newest first */
+export const agentQuestions = (live: LiveData, limit = 5) =>
+  [...live.agentQuestions].sort((a, b) => Number(b.createdAt.microsSinceUnixEpoch - a.createdAt.microsSinceUnixEpoch)).slice(0, limit);
+
+/** the newest shift handoff (agent or operator) */
+export const latestHandoff = (live: LiveData) =>
+  [...live.handoffs].sort((a, b) => Number(b.createdAt.microsSinceUnixEpoch - a.createdAt.microsSinceUnixEpoch))[0];
+
 /** drop options identical to an earlier one (e.g. the optimal plan IS the trucks-only plan) */
 export function dedupeOptions(options: DecisionPlan[]): DecisionPlan[] {
   const seen = new Set<string>();
@@ -341,7 +394,7 @@ export function historyNodes(live: LiveData): HistoryNode[] {
   const now = nowOf(live);
   const nodes: HistoryNode[] = [];
   for (const e of live.events) {
-    const ev = live.evidence.filter((x) => x.eventId === e.eventId).sort((a, b) => a.rank - b.rank)[0]?.text;
+    const ev = whyFlagged(live, e.eventId).reasons[0];
     const duration = e.endUnix == null ? ` · active ${formatDuration(now - e.onsetUnix)}` : '';
     nodes.push({
       id: e.eventId,

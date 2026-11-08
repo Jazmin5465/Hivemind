@@ -4,6 +4,7 @@
 // Browser only: never constructed during SSR.
 import { DbConnection, type SubscriptionHandle } from '@/module_bindings';
 import type {
+  AgentQuestion, AgentRun, DispatchMessage, Handoff,
   Dataset, Decision, Event, EventEvidence, Facility, FacilityState, FixOption, FleetRecommendation, FleetSweep, Operator, OpsConfig, OpsFacility,
   OpsSystem, Plan, PlanAction, PlanFacility, SimClock, System, Well,
 } from '@/module_bindings/types';
@@ -36,6 +37,11 @@ export interface LiveData {
   fleetRecommendations: FleetRecommendation[];
   /** costed fixes per ongoing event from the ML sidecar's /fixes (cost reasoning + predicted sequence) */
   fixes: FixOption[];
+  /** Nemotron agent: runs (briefing summaries), drafted crew messages, operator questions, shift handoffs */
+  agentRuns: AgentRun[];
+  dispatchMessages: DispatchMessage[];
+  agentQuestions: AgentQuestion[];
+  handoffs: Handoff[];
   /** browser time (ms) when the clock's nowUnix last changed: lets the UI tick in real time between backend updates */
   clockReceivedAtMs: number;
   /** true once the active dataset's tables have arrived */
@@ -45,7 +51,7 @@ export interface LiveData {
 export const emptyLive: LiveData = {
   status: 'connecting', error: '', identity: '', datasets: [], dataset: undefined, clock: undefined, operators: [],
   systems: [], facilities: [], wells: [], opsConfig: undefined, opsSystems: [], opsFacilities: [], facilityStates: [],
-  events: [], evidence: [], plans: [], planActions: [], planFacilities: [], decisions: [], fleetSweep: [], fleetRecommendations: [], fixes: [],
+  events: [], evidence: [], plans: [], planActions: [], planFacilities: [], decisions: [], fleetSweep: [], fleetRecommendations: [], fixes: [], agentRuns: [], dispatchMessages: [], agentQuestions: [], handoffs: [],
   clockReceivedAtMs: 0, ready: false,
 };
 
@@ -77,13 +83,17 @@ function datasetQueries(ds: string): string[] {
     `SELECT * FROM fleet_sweep WHERE dataset_id = ${d}`,
     `SELECT * FROM fleet_recommendation WHERE dataset_id = ${d}`,
     `SELECT * FROM fix_option WHERE dataset_id = ${d}`,
+    `SELECT * FROM agent_run WHERE dataset_id = ${d}`,
+    `SELECT * FROM dispatch_message WHERE dataset_id = ${d}`,
+    `SELECT * FROM agent_question WHERE dataset_id = ${d}`,
+    `SELECT * FROM handoff WHERE dataset_id = ${d}`,
   ];
 }
 
 // table accessors on conn.db that the console reads
 const TABLES = [
   'dataset', 'simClock', 'operator', 'system', 'facility', 'well', 'opsConfig', 'opsSystem', 'opsFacility',
-  'facilityState', 'event', 'eventEvidence', 'plan', 'planAction', 'planFacility', 'decision', 'fleetSweep', 'fleetRecommendation', 'fixOption',
+  'facilityState', 'event', 'eventEvidence', 'plan', 'planAction', 'planFacility', 'decision', 'fleetSweep', 'fleetRecommendation', 'fixOption', 'agentRun', 'dispatchMessage', 'agentQuestion', 'handoff',
 ] as const;
 
 type Listener = () => void;
@@ -220,6 +230,10 @@ export class LiveStore {
       fleetSweep: mine(db.fleetSweep.iter()),
       fleetRecommendations: mine(db.fleetRecommendation.iter()),
       fixes: mine(db.fixOption.iter()),
+      agentRuns: mine(db.agentRun.iter()),
+      dispatchMessages: mine(db.dispatchMessage.iter()),
+      agentQuestions: mine(db.agentQuestion.iter()),
+      handoffs: mine(db.handoff.iter()),
       clockReceivedAtMs: this.lastClock?.at ?? Date.now(),
       ready: Boolean(active) && this.dsReady && this.subscribedDs === active?.datasetId,
     };

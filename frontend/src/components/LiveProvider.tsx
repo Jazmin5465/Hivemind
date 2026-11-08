@@ -9,6 +9,8 @@ export interface LiveActions {
   approvePlan: (planId: bigint) => Promise<void>;
   selectContingency: (planId: bigint) => Promise<void>;
   sendInspector: (eventId: string, note?: string) => Promise<void>;
+  /** natural-language question for the Nemotron agent (answered into agent_question) */
+  askAgent: (text: string) => Promise<void>;
 }
 
 const noStore = () => Promise.reject(new Error('Not connected to the backend yet'));
@@ -40,12 +42,13 @@ export function useLiveActions(): LiveActions {
   const live = useLive();
   const ds = live.dataset?.datasetId;
   return useMemo<LiveActions>(() => {
-    if (!store || !ds) return { requestOptions: noStore, approvePlan: noStore, selectContingency: noStore, sendInspector: noStore };
+    if (!store || !ds) return { requestOptions: noStore, approvePlan: noStore, selectContingency: noStore, sendInspector: noStore, askAgent: noStore };
     return {
       requestOptions: (systemId, facilityId) => store.reducers.requestPlanOptions({ datasetId: ds, systemId, facilityId }),
       approvePlan: (planId) => store.reducers.approvePlan({ planId }),
       selectContingency: (planId) => store.reducers.selectContingency({ planId }),
       sendInspector: (eventId, note = '') => store.reducers.sendInspector({ eventId, note }),
+      askAgent: (text) => store.reducers.askAgent({ datasetId: ds, text }),
     };
   }, [store, ds]);
 }
