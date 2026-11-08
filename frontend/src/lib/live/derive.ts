@@ -259,6 +259,18 @@ export function dedupeOptions(options: DecisionPlan[]): DecisionPlan[] {
   });
 }
 
+/**
+ * The alternatives to show next to a chosen plan: drop any that repeat the chosen plan or each other
+ * (e.g. "trucks only" and "shut-in only" both collapse to "Do nothing" when neither is possible),
+ * keeping one per label, the cheapest.
+ */
+export function distinctAlternatives(chosen: DecisionPlan, others: DecisionPlan[]): DecisionPlan[] {
+  const sorted = [...others].sort((a, b) => a.cost - b.cost);
+  const unique = dedupeOptions([chosen, ...sorted]).slice(1);
+  const labels = new Set([chosen.label]);
+  return unique.filter((o) => (labels.has(o.label) ? false : (labels.add(o.label), true)));
+}
+
 const minPositive = (xs: number[]) => {
   const v = xs.filter((x) => x > 0);
   return v.length ? Math.min(...v) : undefined;

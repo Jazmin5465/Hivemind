@@ -5,7 +5,7 @@ import { Activity, Check, TriangleAlert, Droplets, GitCommitHorizontal, Wrench }
 import { Button } from '@/components/ui/button';
 import { useLive } from '@/components/LiveProvider';
 import { PageBackdrop } from '@/components/PageBackdrop';
-import { decisionNodes, forecastNodes, formatTime, historyNodes, planToOption, siblingOptions, sortHistory, type HistoryNode } from '@/lib/live/derive';
+import { decisionNodes, distinctAlternatives, forecastNodes, formatTime, historyNodes, planToOption, siblingOptions, sortHistory, type HistoryNode } from '@/lib/live/derive';
 
 export const Route=createFileRoute('/timeline')({head:()=>({meta:[{title:'Hivemind — Incident & Decision Timeline'},{name:'description',content:'Newest-first incident history, linked recoveries, forecasts and recorded operator decisions.'},{property:'og:title',content:'Hivemind — Incident & Decision Timeline'},{property:'og:description',content:'Trace each incident to its recovery and each forecast to the operator’s decision.'},{property:'og:type',content:'website'},{name:'twitter:card',content:'summary_large_image'}]}),component:TimelinePage});
 function TimelinePage(){
@@ -86,7 +86,7 @@ function DecisionBreakdown({id}:{id:string}){
   if(!plan||!pf)return null;
   // the alternatives offered next to the chosen plan (same request) — system totals
   const chosen=planToOption(live,plan);
-  const others=siblingOptions(live,plan).filter(o=>o.planId!==plan.planId).map(o=>planToOption(live,o));
+  const others=distinctAlternatives(chosen,siblingOptions(live,plan).filter(o=>o.planId!==plan.planId).map(o=>planToOption(live,o)));
   const cheapest=[chosen,...others].sort((a,b)=>a.cost-b.cost)[0]??chosen;
   const why=!others.length?'Only available response for this issue.':cheapest.planId===chosen.planId||cheapest.cost>=chosen.cost?`Lowest estimated cost of ${others.length+1} options — saves ${$(Math.min(...others.map(o=>o.cost))-chosen.cost)} vs. next best.`:`Chosen over the lowest-cost option (${cheapest.label}, ${$(cheapest.cost)}) — ${$(chosen.cost-cheapest.cost)} more.`;
   const acts=live.planActions.filter(a=>a.planId===plan.planId&&a.facilityId===d.facilityId);

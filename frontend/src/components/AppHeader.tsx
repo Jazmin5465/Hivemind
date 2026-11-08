@@ -14,7 +14,7 @@ const links = [
 export function AppHeader() {
   const [open, setOpen] = useState(false);
   const live = useLive();
-  const { now, alerts } = headerSummary(live);
+  const { now } = headerSummary(live);
   const offline = live.status !== "connected";
   return (
     <>
@@ -26,7 +26,7 @@ export function AppHeader() {
           <HivemindLogo className="h-6 w-6 drop-shadow-[0_0_3px_oklch(0.82_0.13_200/0.6)]" />
           <span className="font-mono text-lg font-bold tracking-[0.3em] text-primary glow-cyan">HIVEMIND</span>
         </Link>
-        <span className="ml-auto hidden font-mono text-xs text-muted-foreground sm:block">{offline ? <span className="text-destructive">{live.status === "connecting" ? "CONNECTING TO BACKEND…" : "BACKEND OFFLINE"}</span> : <>{live.dataset ? `${live.dataset.datasetId} // ` : ""}{now ? formatTime(now) : "NO ACTIVE DATASET"} // <span className={alerts ? "text-destructive" : "text-ok"}>{alerts ? `${alerts} ALERTS` : "ALL SYSTEMS NORMAL"}</span></>}</span>
+        <span className="ml-auto hidden font-mono text-xs text-muted-foreground sm:block">{offline ? <span className="text-destructive">{live.status === "connecting" ? "CONNECTING TO BACKEND…" : "BACKEND OFFLINE"}</span> : <>{live.dataset ? `${live.dataset.datasetId} // ` : ""}{now ? formatTime(now) : "NO ACTIVE DATASET"}</>}</span>
       </header>
       {open && <div className="fixed inset-0 z-40 bg-background/70" onClick={() => setOpen(false)} />}
       <nav className={`fixed left-0 top-0 z-50 h-full w-72 glass transition-transform duration-300 ${open ? "translate-x-0" : "-translate-x-full"}`}>

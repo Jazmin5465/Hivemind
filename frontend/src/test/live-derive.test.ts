@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  agentBriefing, decisionNodes, dedupeOptions, effectiveNow, fixFor, parseSequence, whyFlagged, fleetTrucks, historyNodes, mapModel, optionPlans, pendingPriority, planToOption, priorityQueue,
+  agentBriefing, decisionNodes, dedupeOptions, distinctAlternatives, effectiveNow, fixFor, parseSequence, whyFlagged, fleetTrucks, historyNodes, mapModel, optionPlans, pendingPriority, planToOption, priorityQueue,
   recommendations, sortHistory, tickSeconds, watchItems,
 } from '@/lib/live/derive';
 import { action, decision, event, facility, identity, liveData, NOW, plan, planFacility, state, system, ts } from './live-fixtures';
@@ -139,6 +139,17 @@ describe('duplicate options', () => {
   it('hides an option identical to an earlier one (optimal == trucks only)', () => {
     const o = (key: string, cost: number, summary: string) => ({ key, label: '', cost, truckingCost: 0, revenueLoss: 0, trips: 0, trucks: 0, wellIds: [], shutdownHours: null, lines: [{ facilityId: 'A', summary }], valid: true, errors: [] }) as never;
     expect(dedupeOptions([o('optimal', 1810, '1 truck, 2 trips'), o('shut_in_only', 8966, 'shut in W1'), o('trucks_only', 1810, '1 truck, 2 trips')]).map((x: { key: string }) => x.key)).toEqual(['optimal', 'shut_in_only']);
+  });
+
+  it('timeline alternatives: one "Do nothing", never a repeat of the chosen plan', () => {
+    const o = (key: string, label: string, cost: number, summary: string) => ({ key, label, cost, truckingCost: 0, revenueLoss: 0, trips: 0, trucks: 0, wellIds: [], shutdownHours: null, lines: [{ facilityId: 'A', summary }], valid: true, errors: [] }) as never;
+    const chosen = o('optimal', 'Send trucks', 1810, '1 truck, 1 trip');
+    const alts = distinctAlternatives(chosen, [
+      o('shut_in_only', 'Do nothing', 9939, 'no action'),
+      o('trucks_only', 'Send trucks', 1810, '1 truck, 1 trip'),
+      o('do_nothing', 'Do nothing', 9939, 'no action'),
+    ]);
+    expect(alts.map((x: { key: string; label: string }) => x.label)).toEqual(['Do nothing']);
   });
 });
 
