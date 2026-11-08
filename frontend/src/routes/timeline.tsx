@@ -2,20 +2,18 @@ import { createFileRoute } from '@tanstack/react-router';
 import { useState, useLayoutEffect, useRef } from 'react';
 import { Activity, Check, TriangleAlert, Droplets, GitCommitHorizontal, Wrench } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { useDecisions } from '@/components/DecisionProvider';
-import { decisionPlans, historyNodes, priorityQueue, sortHistory, type HistoryNode } from '@/lib/operations';
-import { datasetNow, facilityReadings, formatTime } from '@/lib/hive-data';
+import { useLive } from '@/components/LiveProvider';
+import { decisionNodes, forecastNodes, formatTime, historyNodes, planToOption, siblingOptions, sortHistory, type HistoryNode } from '@/lib/live/derive';
 
 export const Route=createFileRoute('/timeline')({head:()=>({meta:[{title:'Hivemind — Incident & Decision Timeline'},{name:'description',content:'Newest-first incident history, linked recoveries, forecasts and recorded operator decisions.'},{property:'og:title',content:'Hivemind — Incident & Decision Timeline'},{property:'og:description',content:'Trace each incident to its recovery and each forecast to the operator’s decision.'},{property:'og:type',content:'website'},{name:'twitter:card',content:'summary_large_image'}]}),component:TimelinePage});
 function TimelinePage(){
   const [mode,setMode]=useState('all'),[system,setSystem]=useState('ALL'),[type,setType]=useState('ALL');
-  const {decisions,error}=useDecisions();
-  const forecasts:HistoryNode[]=priorityQueue.filter(q=>q.scenario).map(q=>({id:q.id,ts:datasetNow+(q.seconds??0),title:`${q.facility} · tank fill exposure`,detail:(()=>{const f=facilityReadings.find(x=>x.id===q.facility);const r=f?.readings??[];return `Tank ${(r[0]??0).toFixed(0)}% · inflow ${(r[4]??0).toFixed(0)} bpd · ${((q.seconds??0)/3600).toFixed(1)}h to shut-in limit`;})(),kind:'forecast',category:'tank_fill',system:q.facility.slice(0,2)}));
-  const actions:HistoryNode[]=decisions.map(d=>({id:d.id,ts:d.dataset_ts,recordedAt:d.created_at,title:d.title,detail:`${d.detail} · Estimated $${d.estimated_cost.toLocaleString()}`,kind:'decision',system:d.facility.slice(0,2),parentId:d.queue_id,relation:'Decision for this item'}));
-  const nodes=sortHistory([...historyNodes,...forecasts,...actions]).filter(n=>(mode==='all'||(mode==='history'?n.kind!=='forecast':n.kind==='forecast'||n.kind==='decision'))&&(system==='ALL'||n.system===system)&&(type==='ALL'||(type==='pump'?n.category?.startsWith('pump'):type==='decision'?n.kind==='decision':n.category===type)));
+  const live=useLive();
+  const error=live.status==='error'?live.error:'';
+  const nodes=sortHistory([...historyNodes(live),...forecastNodes(live),...decisionNodes(live)]).filter(n=>(mode==='all'||(mode==='history'?n.kind!=='forecast':n.kind==='forecast'||n.kind==='decision'))&&(system==='ALL'||n.system===system)&&(type==='ALL'||(type==='pump'?n.category?.startsWith('pump'):type==='decision'?n.kind==='decision':n.category===type)));
   return <main className="mx-auto max-w-5xl p-4 md:p-6"><div className="mb-6"><h1 className="font-mono text-2xl font-bold tracking-[0.2em] text-heading-pink glow-magenta-soft">EVENT TIMELINE</h1></div>
     <div className="flex flex-wrap gap-2 border-b border-border pb-4">{([['all','All events'],['history','History'],['predict','Forecasts & decisions']] as const).map(([k,l])=><Button key={k} variant={mode===k?'secondary':'ghost'} onClick={()=>setMode(k)}>{l}</Button>)}</div>
-    <div className="my-4 flex flex-wrap gap-2">{['ALL','S1','S2','S3','S4','S5'].map(s=><Button size="sm" variant={system===s?'secondary':'ghost'} key={s} onClick={()=>setSystem(s)}>{s==='ALL'?'All systems':s}</Button>)}<span className="border-l border-border"/>{([['ALL','All types'],['pipeline_leak','Leaks'],['pump','Pumps'],['recovery','Recoveries'],['decision','Decisions']] as const).map(([k,l])=><Button size="sm" key={k} variant={type===k?'secondary':'ghost'} onClick={()=>setType(k)}>{l}</Button>)}</div>
+    <div className="my-4 flex flex-wrap gap-2">{['ALL',...live.systems.map(x=>x.systemId)].map(s=><Button size="sm" variant={system===s?'secondary':'ghost'} key={s} onClick={()=>setSystem(s)}>{s==='ALL'?'All systems':s}</Button>)}<span className="border-l border-border"/>{([['ALL','All types'],['pipeline_leak','Leaks'],['pump','Pumps'],['recovery','Recoveries'],['decision','Decisions']] as const).map(([k,l])=><Button size="sm" key={k} variant={type===k?'secondary':'ghost'} onClick={()=>setType(k)}>{l}</Button>)}</div>
     {error&&<p role="alert" className="text-sm text-destructive">{error}</p>}
     {nodes.length?<EventTree nodes={nodes}/>:<p className="py-12 text-center text-muted-foreground">No matching events.</p>}
   </main>;
@@ -75,15 +73,24 @@ function EventTree({nodes}:{nodes:HistoryNode[]}){
   </div>;
 }
 function DecisionBreakdown({id}:{id:string}){
-  const {decisions}=useDecisions();
-  const d=decisions.find(x=>x.id===id);const item=d&&priorityQueue.find(q=>q.id===d.queue_id);
-  if(!d||!item)return null;
-  const plans=decisionPlans(item);const plan=plans.find(p=>p.key===d.option_key);
-  if(!plan)return null;
-  const cheapest=[...plans].sort((a,b)=>a.cost-b.cost)[0]??plan;
-  const others=plans.filter(p=>p.key!==plan.key);
+  const live=useLive();
+  const d=live.decisions.find(x=>`decision:${x.id}`===id);
+  if(!d)return null;
   const $=(v:number)=>`$${Math.round(v).toLocaleString()}`;
-  const why=plans.length===1?'Only available response for this issue.':plan.key===cheapest.key?`Lowest estimated cost of ${plans.length} options — saves ${$(Math.min(...others.map(o=>o.cost))-plan.cost)} vs. next best.`:`Chosen over the lowest-cost option (${cheapest.label}, ${$(cheapest.cost)}) — ${$(plan.cost-cheapest.cost)} more.`;
-  const rows:[string,string][]=[['Lost production',$(plan.revenueLoss)],...(plan.trips?[[`Hauling · ${plan.trips} trips · ${plan.trucks} truck${plan.trucks===1?'':'s'}`,$(plan.truckingCost)] as [string,string]]:[]),...(plan.wellIds.length?[['Wells shut in',plan.wellIds.join(', ')] as [string,string]]:[]),['Automatic shut-in',plan.shutdownHours===null?'Avoided':`After ${plan.shutdownHours.toFixed(1)}h`]];
-  return <details className="border-t border-border text-xs"><summary className="cursor-pointer px-4 py-2 font-mono text-[10px] uppercase tracking-wider text-muted-foreground hover:text-foreground">Cost breakdown & reasoning</summary><div className="space-y-3 border-t border-border px-4 py-3"><dl className="space-y-1">{rows.map(([k,v])=><div key={k} className="flex justify-between gap-4"><dt className="text-muted-foreground">{k}</dt><dd className="font-mono">{v}</dd></div>)}<div className="flex justify-between gap-4 border-t border-border pt-1 font-semibold"><dt>Total estimated</dt><dd className="font-mono text-ok">{$(plan.cost)}</dd></div></dl><p><span className="font-semibold">Why: </span><span className="text-muted-foreground">{why}</span></p>{others.length>0&&<ul className="space-y-0.5 text-muted-foreground">{others.map(o=><li key={o.key} className="flex justify-between gap-4"><span>vs. {o.label}</span><span className="font-mono">{$(o.cost)}</span></li>)}</ul>}</div></details>;
+  const shell=(body:React.ReactNode)=><details className="border-t border-border text-xs"><summary className="cursor-pointer px-4 py-2 font-mono text-[10px] uppercase tracking-wider text-muted-foreground hover:text-foreground">Cost breakdown & reasoning</summary><div className="space-y-3 border-t border-border px-4 py-3">{body}</div></details>;
+  if(d.kind==='inspection')return shell(<p><span className="font-semibold">Why: </span><span className="text-muted-foreground">Only available response for this issue.</span></p>);
+  const plan=d.planId!=null?live.plans.find(p=>p.planId===d.planId):undefined;
+  const pf=plan?live.planFacilities.find(f=>f.planId===plan.planId&&f.facilityId===d.facilityId):undefined;
+  if(!plan||!pf)return null;
+  // the alternatives offered next to the chosen plan (same request) — system totals
+  const chosen=planToOption(live,plan);
+  const others=siblingOptions(live,plan).filter(o=>o.planId!==plan.planId).map(o=>planToOption(live,o));
+  const cheapest=[chosen,...others].sort((a,b)=>a.cost-b.cost)[0]??chosen;
+  const why=!others.length?'Only available response for this issue.':cheapest.planId===chosen.planId||cheapest.cost>=chosen.cost?`Lowest estimated cost of ${others.length+1} options — saves ${$(Math.min(...others.map(o=>o.cost))-chosen.cost)} vs. next best.`:`Chosen over the lowest-cost option (${cheapest.label}, ${$(cheapest.cost)}) — ${$(chosen.cost-cheapest.cost)} more.`;
+  const acts=live.planActions.filter(a=>a.planId===plan.planId&&a.facilityId===d.facilityId);
+  const trips=acts.filter(a=>a.type==='dispatch_truck').reduce((s,a)=>s+a.trucks*a.tripsPerTruck,0);
+  const trucks=acts.filter(a=>a.type==='dispatch_truck').reduce((s,a)=>s+a.trucks,0);
+  const wells=acts.filter(a=>a.type==='shut_in_wells').flatMap(a=>a.wells);
+  const rows:[string,string][]=[['Lost production',$(pf.shutInCost+pf.tripCost)],...(trips?[[`Hauling · ${trips} trips · ${trucks} truck${trucks===1?'':'s'}`,$(pf.truckCost)] as [string,string]]:[]),...(wells.length?[['Wells shut in',wells.join(', ')] as [string,string]]:[]),['Automatic shut-in',pf.tripsAtUnix==null?'Avoided':`After ${((pf.tripsAtUnix-plan.planStartUnix)/3600).toFixed(1)}h`]];
+  return shell(<><dl className="space-y-1">{rows.map(([k,v])=><div key={k} className="flex justify-between gap-4"><dt className="text-muted-foreground">{k}</dt><dd className="font-mono">{v}</dd></div>)}<div className="flex justify-between gap-4 border-t border-border pt-1 font-semibold"><dt>Total estimated</dt><dd className="font-mono text-ok">{$(pf.cost)}</dd></div></dl><p><span className="font-semibold">Why: </span><span className="text-muted-foreground">{why}</span></p>{plan.eventIds.length>1&&<p className="text-muted-foreground">Joint {plan.systemId} plan covering {plan.eventIds.length} pump failures · total {$(plan.totalCost)}</p>}{others.length>0&&<ul className="space-y-0.5 text-muted-foreground">{others.map(o=><li key={o.key} className="flex justify-between gap-4"><span>vs. {o.label}</span><span className="font-mono">{$(o.cost)}</span></li>)}</ul>}</>);
 }

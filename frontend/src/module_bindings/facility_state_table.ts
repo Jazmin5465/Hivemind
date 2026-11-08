@@ -26,4 +26,7 @@ export default __t.row({
   wellsProducing: __t.u32().name("wells_producing"),
   wellsTotal: __t.u32().name("wells_total"),
   health: __t.string(),
+  wellIds: __t.array(__t.string()).name("well_ids"),
+  wellStatus: __t.array(__t.f64()).name("well_status"),
+  wellWaterBpd: __t.array(__t.f64()).name("well_water_bpd"),
 });

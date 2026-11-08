@@ -2,7 +2,8 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Plus, Minus, RotateCcw, X } from "lucide-react";
-import { mapEdges, mapNodes, geoEdges, geoNodes, systemBoxes, facilityReadings, operatingCosts, thresholds, datasetNow, formatTime, type MapNode, type SystemBox } from "@/lib/hive-data";
+import { useLive } from "@/components/LiveProvider";
+import { formatTime, mapModel, nowOf, thresholdsOf, type MapNode, type SystemBox } from "@/lib/live/derive";
 
 export const Route = createFileRoute("/map")({
   validateSearch: (s: Record<string, unknown>): { facility?: string | undefined } => ({ facility: typeof s["facility"] === "string" ? s["facility"] : undefined }),
@@ -19,18 +20,27 @@ export const Route = createFileRoute("/map")({
   component: MapPage,
 });
 
-const W = 1080, H = 960;
 const statusVar = { ok: "var(--primary)", warn: "var(--warning)", fail: "var(--destructive)" } as const;
 const kindLabel = { facility: "FAC", tank: "TNK", pump: "PMP", disposal: "SWD", well: "WELL", yard: "YRD" } as const;
 
 function MapPage() {
   const { facility } = Route.useSearch();
+  const live = useLive();
+  // layout sized from the live network (any number of systems / facilities)
+  const model = mapModel(live);
+  const { W, H, nodes: mapNodes, edges: mapEdges, boxes: systemBoxes, geoNodes, geoEdges } = model;
+  const thresholds = thresholdsOf(live);
+  const sizeRef = useRef({ W, H });
+  sizeRef.current = { W, H };
   const [view, setView] = useState({ x: 0, y: 0, k: 1 });
-  const [selected, setSelected] = useState<MapNode | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [tab, setTab] = useState<string>("ALL");
   const [mode, setMode] = useState<"schematic" | "geo">("schematic");
   const nodes = mode === "geo" ? geoNodes : mapNodes;
   const edges = mode === "geo" ? geoEdges : mapEdges;
+  // keep the inspector showing live values: look the selected node up in the current model
+  const selected: MapNode | null = selectedId ? nodes.find((n) => n.id === selectedId) ?? null : null;
+  const setSelected = (n: MapNode | null) => setSelectedId(n?.id ?? null);
   const ref = useRef<HTMLDivElement>(null);
   const viewRef = useRef(view);
   viewRef.current = view;
@@ -67,14 +77,14 @@ function MapPage() {
 
   // Deep-link from the dashboard: select and zoom to the facility's system.
   useEffect(() => {
-    if (!facility) return;
+    if (!facility || !live.ready) return;
     const node = mapNodes.find((n) => n.id === facility);
     if (node) {
       setSelected(node);
       selectTab(node.system);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [facility]);
+  }, [facility, live.ready]);
 
   useEffect(() => {
     const el = ref.current;
@@ -83,7 +93,7 @@ function MapPage() {
       e.preventDefault();
       setAnimate(false);
       const rect = el.getBoundingClientRect();
-      const scale = W / rect.width;
+      const scale = sizeRef.current.W / rect.width;
       const dy = e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 100 : 1);
       zoomAt((e.clientX - rect.left) * scale, (e.clientY - rect.top) * scale, viewRef.current.k * Math.exp(-dy * 0.0015));
     };
@@ -94,17 +104,17 @@ function MapPage() {
   const node = (id: string) => nodes.find((n) => n.id === id);
   const visibleNodes = nodes.filter((n) => tab === "ALL" || n.system === tab);
   const visibleEdges = edges.filter((e) => tab === "ALL" || e.system === tab);
-  const selectedFacility = selected?.kind === "facility" ? facilityReadings.find((f) => f.id === selected.id) : undefined;
-  const selectedLogistics = selectedFacility
-    ? (operatingCosts.systems[selectedFacility.system as keyof typeof operatingCosts.systems].facilities as Record<string, { response_min: number; cycle_min: number }>)[selectedFacility.id]
-    : undefined;
+  const selectedState = selected?.kind === "facility" ? live.facilityStates.find((f) => f.facilityId === selected.id) : undefined;
+  const selectedLogistics = selectedState ? live.opsFacilities.find((f) => f.facilityId === selectedState.facilityId) : undefined;
+  const lvl = selectedState?.levelPct ?? 0;
+  const bpd = (v: number | undefined) => (v == null || !Number.isFinite(v) ? "—" : v.toFixed(0));
 
   return (
     <main className="mx-auto max-w-7xl space-y-4 p-4 md:p-6">
       <div className="flex flex-wrap items-end justify-between gap-2">
         <div>
           <h1 className="font-mono text-2xl font-bold tracking-[0.2em] text-heading-pink glow-magenta-soft">NETWORK MAP</h1>
-          <p className="font-mono text-xs text-muted-foreground">{tab === "ALL" ? "All systems" : `Isolated ${tab}`} · {mode === "geo" ? "GPS positions" : "schematic"} · Last updated: {formatTime(datasetNow)}</p>
+          <p className="font-mono text-xs text-muted-foreground">{tab === "ALL" ? "All systems" : `Isolated ${tab}`} · {mode === "geo" ? "GPS positions" : "schematic"} · Last updated: {live.ready ? formatTime(nowOf(live)) : "—"}</p>
         </div>
         <div className="flex gap-3 font-mono text-[10px] uppercase">
           <span className="text-primary">● Normal</span><span className="text-warning">● Warning</span><span className="text-destructive">● Failing</span>
@@ -148,11 +158,11 @@ function MapPage() {
           </defs>
           <rect width={W} height={H} fill="url(#grid)" />
           <g style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.k})`, transformOrigin: "0 0", transition: animate ? "transform 700ms cubic-bezier(0.65, 0, 0.35, 1)" : "none" }}>
-            {mode === "geo" && [31.5, 32, 32.5].map((lat) => (
-              <text key={lat} x="8" y={40 + (32.6 - lat) * 580} fontSize="9" fontFamily="JetBrains Mono" fill="var(--muted-foreground)">{lat}°N</text>
+            {mode === "geo" && model.latTicks.map(({ value, y }) => (
+              <text key={value} x="8" y={y} fontSize="9" fontFamily="JetBrains Mono" fill="var(--muted-foreground)">{Math.abs(value)}°{value >= 0 ? "N" : "S"}</text>
             ))}
-            {mode === "geo" && [-102.5, -102, -101.5].map((lon) => (
-              <text key={lon} x={60 + (lon + 103) * 492} y={H - 8} textAnchor="middle" fontSize="9" fontFamily="JetBrains Mono" fill="var(--muted-foreground)">{Math.abs(lon)}°W</text>
+            {mode === "geo" && model.lonTicks.map(({ value, x }) => (
+              <text key={value} x={x} y={H - 8} textAnchor="middle" fontSize="9" fontFamily="JetBrains Mono" fill="var(--muted-foreground)">{Math.abs(value)}°{value >= 0 ? "E" : "W"}</text>
             ))}
             {mode === "schematic" && systemBoxes.filter((b) => tab === "ALL" || b.id === tab).map((b) => (
               <g key={b.id}>
@@ -210,15 +220,15 @@ function MapPage() {
             </div>
             <div className="mt-2 uppercase" style={{ color: statusVar[selected.status] }}>Status: {selected.status}</div>
             <p className="mt-2 text-muted-foreground">{selected.detail}</p>
-            {selectedFacility && (
+            {selectedState && (
               <div className="mt-4 space-y-2 border-t border-border pt-3">
                 <div className="text-[10px] uppercase tracking-widest text-muted-foreground">Live telemetry</div>
-                <div className="flex justify-between"><span className="text-muted-foreground">Tank level</span><span className={(selectedFacility.readings[0] ?? 0) >= thresholds.warning ? "text-warning" : "text-ok"}>{selectedFacility.readings[0]}%</span></div>
-                <div className="h-2 overflow-hidden rounded bg-muted"><div className={`h-full ${(selectedFacility.readings[0] ?? 0) >= 90 ? "bg-destructive" : (selectedFacility.readings[0] ?? 0) >= 75 ? "bg-warning" : "bg-ok"}`} style={{ width: `${selectedFacility.readings[0]}%` }} /></div>
-                <div className="flex justify-between"><span className="text-muted-foreground">Pump flow</span><span>{selectedFacility.readings[2]} bpd</span></div>
-                <div className="flex justify-between"><span className="text-muted-foreground">Inflow</span><span>{selectedFacility.readings[4]} bpd</span></div>
-                <div className="flex justify-between"><span className="text-muted-foreground">Received</span><span>{selectedFacility.readings[3]} bpd</span></div>
-                {selectedLogistics && <div className="flex justify-between"><span className="text-muted-foreground">Fleet arrival</span><span className="text-accent">{selectedLogistics.response_min} min · cycle {selectedLogistics.cycle_min} min</span></div>}
+                <div className="flex justify-between"><span className="text-muted-foreground">Tank level</span><span className={lvl >= thresholds.warning ? "text-warning" : "text-ok"}>{lvl.toFixed(2)}%</span></div>
+                <div className="h-2 overflow-hidden rounded bg-muted"><div className={`h-full ${lvl >= thresholds.shutdown ? "bg-destructive" : lvl >= thresholds.warning ? "bg-warning" : "bg-ok"}`} style={{ width: `${Math.min(100, Math.max(0, lvl))}%` }} /></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">Pump flow</span><span>{bpd(selectedState.pumpFlowBpd)} bpd</span></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">Inflow</span><span>{bpd(selectedState.inflowBpd)} bpd</span></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">Received</span><span>{bpd(selectedState.receiveFlowBpd)} bpd</span></div>
+                {selectedLogistics && <div className="flex justify-between"><span className="text-muted-foreground">Fleet arrival</span><span className="text-accent">{selectedLogistics.responseMin} min · cycle {selectedLogistics.cycleMin} min</span></div>}
               </div>
             )}
           </aside>

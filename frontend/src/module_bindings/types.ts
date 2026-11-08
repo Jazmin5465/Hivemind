@@ -228,6 +228,9 @@ export const FacilityState = __t.object("FacilityState", {
   wellsProducing: __t.u32(),
   wellsTotal: __t.u32(),
   health: __t.string(),
+  wellIds: __t.array(__t.string()),
+  wellStatus: __t.array(__t.f64()),
+  wellWaterBpd: __t.array(__t.f64()),
 });
 export type FacilityState = __Infer<typeof FacilityState>;
 

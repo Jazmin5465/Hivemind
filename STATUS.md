@@ -66,6 +66,21 @@ _Last updated: 2026-11-07 23:40 CT · 9 PM–2 AM milestones done · ML integrat
 - Hardcoding audit of `core/src`, `server/src`, `worker/src`: no asset/system IDs, dataset names, prices, limits or repair times; only 2 comments mention example IDs.
 - Agentic check: an operator question (via `ask_agent`) made Nemotron call `plan_system` with its own combined overrides `{fleetSize: 1, extraRepairHours: 2}`; answered in 2.2 s.
 
+## Frontend integration (2026-11-08 03:30, branch `integration-ui`)
+- `integration-ui` = Hadent's `integration` (backend + ML + /fixes) + Jazmin's `frontend` merged, then wired to live data.
+- Jazmin's pages (dashboard, map, timeline) keep their markup and styles, but now read **only SpacetimeDB subscriptions**. Removed: the bundled full_week JSON, her browser-side detection and cost model, and the localStorage decisions.
+- Team decisions (asked first):
+  - Popup options come from the backend (`request_plan_options`: optimal / shut-in only / trucks only / do nothing).
+  - Decisions go in a shared `decision` table (`approve_plan`, `select_contingency` for "proactive watch" items, `send_inspector`).
+  - Proactive watch and fleet borrowing stay, computed from live readings. The long-term fleet move now uses the backend `fleet_sweep`.
+  - No new panels added.
+  - Bindings live in `frontend/src/module_bindings` (`client/` removed).
+  - Her tests were rewritten against fake live rows.
+- Fixed hardcoding that would break on the test network: timeline S1–S5 filter, `slice(0, 2)` system ids, the fixed geo projection and axis labels, 90/75% tank-bar limits, and the fixed 1080×960 canvas (six systems overflowed).
+- Backend additions: `decision` table, `plan.optionKey` / `scenarioFacilityId`, per-well state in `facility_state`, fleet sweep on load. API.md is now v1.2.
+- Checks: frontend 17/17 tests, build OK, SSR 200 on `/`, `/map`, `/timeline`. Live smoke against the backend (`frontend/scripts/live-smoke.ts --flow`): queue in SPEC order; S2 options $3,108 / $7,250 / $4,599 / $12,253; approve → 3 decisions, 2 trucks en route, S2 leaves the queue; undo works. **Not yet checked in a real browser.**
+- Note for Jazmin: 2 of her original tests (`browser-decisions.test.tsx`) were already failing before integration; that file tested removed localStorage logic and was replaced.
+
 ## Contradictions / ambiguities with the spec or the EOG docs (please review)
 1. ~~Plans $15–27 cheaper than the reference~~ **Fixed (23:40): plans now match the key exactly.** The key plans from the level rounded to 0.1 points (its `level_final_pct` precision), and at onset it uses the simulator's set level. We now plan from the de-noised level (fixed-slope fit since onset) rounded to 0.1. Result: all 3 snapshot system plans equal the reference to the dollar ($3,108 / $1,810 / $3,095), with identical shut-in minutes. All 13 full-week replay plans are identical (the total differs by $1 only because the key's `~$` figures are rounded).
 2. **"Accept the trip" plans.** We only consider plans that prevent the trip, or doing nothing, matching SPEC ("cheapest plan that keeps the tank from tripping, or accept the trip"). Partial plans (trucks that only delay the trip) are not searched. No reference plan in the history data needs them.

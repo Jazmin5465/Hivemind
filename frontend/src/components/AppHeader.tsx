@@ -1,6 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import { useState } from "react";
-import { incidents, datasetNow, formatTime } from "@/lib/hive-data";
+import { useLive } from "@/components/LiveProvider";
+import { formatTime, headerSummary } from "@/lib/live/derive";
 import { Menu, X, LayoutDashboard, Network, Clock, Hexagon } from "lucide-react";
 
 const links = [
@@ -11,6 +12,9 @@ const links = [
 
 export function AppHeader() {
   const [open, setOpen] = useState(false);
+  const live = useLive();
+  const { now, alerts } = headerSummary(live);
+  const offline = live.status !== "connected";
   return (
     <>
       <header className="sticky top-0 z-40 glass flex h-14 items-center gap-3 px-4">
@@ -21,7 +25,7 @@ export function AppHeader() {
           <Hexagon className="h-5 w-5 text-accent animate-pulse-glow" />
           <span className="font-mono text-lg font-bold tracking-[0.3em] text-primary glow-cyan">HIVEMIND</span>
         </Link>
-        <span className="ml-auto hidden font-mono text-xs text-muted-foreground sm:block">{formatTime(datasetNow)} // <span className={incidents.length ? "text-destructive" : "text-ok"}>{incidents.length ? `${incidents.length} ALERTS` : "ALL SYSTEMS NORMAL"}</span></span>
+        <span className="ml-auto hidden font-mono text-xs text-muted-foreground sm:block">{offline ? <span className="text-destructive">{live.status === "connecting" ? "CONNECTING TO BACKEND…" : "BACKEND OFFLINE"}</span> : <>{live.dataset ? `${live.dataset.datasetId} // ` : ""}{now ? formatTime(now) : "NO ACTIVE DATASET"} // <span className={alerts ? "text-destructive" : "text-ok"}>{alerts ? `${alerts} ALERTS` : "ALL SYSTEMS NORMAL"}</span></>}</span>
       </header>
       {open && <div className="fixed inset-0 z-40 bg-background/70" onClick={() => setOpen(false)} />}
       <nav className={`fixed left-0 top-0 z-50 h-full w-72 glass transition-transform duration-300 ${open ? "translate-x-0" : "-translate-x-full"}`}>
