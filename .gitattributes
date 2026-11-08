@@ -1,0 +1,2 @@
+# LightGBM cannot read the model file with Windows line endings: never convert it
+ml/model/*.txt -text
