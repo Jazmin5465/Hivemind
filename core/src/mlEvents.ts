@@ -16,7 +16,11 @@ export interface MlEventOptions {
   asOfUnix?: number;
   openThreshold?: number;
   closeThreshold?: number;
+  /** steps above threshold to open a pump_failure event (fast, unambiguous) */
   minOpenSteps?: number;
+  /** steps above threshold to open a slow-problem event (leak, worn pump): longer, so short
+   *  probability blips don't become alerts */
+  minOpenStepsSlow?: number;
   minCloseSteps?: number;
   modelVersion?: string;
 }
@@ -60,12 +64,14 @@ export function detectFromMl(model: DatasetModel, grid: Grid, opts: MlEventOptio
   const last = idxAtOrBefore(grid, asOf);
   const open = opts.openThreshold ?? 0.5;
   const close = opts.closeThreshold ?? 0.5;
-  const minOpen = opts.minOpenSteps ?? 3;
+  const minOpenFast = opts.minOpenSteps ?? 3;
+  const minOpenSlow = opts.minOpenStepsSlow ?? Number(globalThis.process?.env?.ML_MIN_OPEN_SLOW ?? 6) // 30 min on a 5-min grid;
   const minClose = opts.minCloseSteps ?? 3;
   const label = opts.modelVersion ? ` (${opts.modelVersion})` : '';
   const events: DetectedEvent[] = [];
 
   for (const tg of mlTargets(model)) {
+    const minOpen = tg.category === 'pump_failure' ? minOpenFast : minOpenSlow;
     const p = gridGet(grid, tg.assetId, tg.metric);
     if (!p) continue;
     let state: 'idle' | 'open' = 'idle';
