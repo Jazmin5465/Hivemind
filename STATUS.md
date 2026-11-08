@@ -60,6 +60,12 @@ _Last updated: 2026-11-07 23:40 CT · 9 PM–2 AM milestones done · ML integrat
   Regression tests for all three (41 tests pass). After the fixes, 3 of 3 live runs were correct.
 - The `.env` worker key had to be re-registered with the module (it changed while keys were moved). I also accidentally glued `LLM_TIMEOUT_MS` onto the `WORKER_KEY` line (no trailing newline) and fixed it.
 
+## Test-data readiness (2026-11-08 02:20)
+- EOG `test/` is **not published yet** (checked with `scripts/fetch-data.sh --test-only`).
+- Drill 3: a synthetic week with every ID renamed to **S6–S10** (17 facilities, 7 h repairs), run through the same `scripts/flip-to-test.sh --folder` command. Live console in **2 s**; rules and ML both found **26/26 events, 0 false alarms**; all 19 failures planned. The stand-in `test` dataset was then deleted.
+- Hardcoding audit of `core/src`, `server/src`, `worker/src`: no asset/system IDs, dataset names, prices, limits or repair times; only 2 comments mention example IDs.
+- Agentic check: an operator question (via `ask_agent`) made Nemotron call `plan_system` with its own combined overrides `{fleetSize: 1, extraRepairHours: 2}`; answered in 2.2 s.
+
 ## Contradictions / ambiguities with the spec or the EOG docs (please review)
 1. ~~Plans $15–27 cheaper than the reference~~ **Fixed (23:40): plans now match the key exactly.** The key plans from the level rounded to 0.1 points (its `level_final_pct` precision), and at onset it uses the simulator's set level. We now plan from the de-noised level (fixed-slope fit since onset) rounded to 0.1. Result: all 3 snapshot system plans equal the reference to the dollar ($3,108 / $1,810 / $3,095), with identical shut-in minutes. All 13 full-week replay plans are identical (the total differs by $1 only because the key's `~$` figures are rounded).
 2. **"Accept the trip" plans.** We only consider plans that prevent the trip, or doing nothing, matching SPEC ("cheapest plan that keeps the tank from tripping, or accept the trip"). Partial plans (trucks that only delay the trip) are not searched. No reference plan in the history data needs them.
