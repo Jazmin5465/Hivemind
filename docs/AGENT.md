@@ -32,6 +32,18 @@ Rounding to the precision as written is also accepted ("1.4 h" for 1.42).
 
 If the LLM's text fails, the runner asks it to rewrite and names the unsupported numbers. It retries at most twice, then falls back to a **template** built only from tool output (`worker/src/agent/templates.ts`). The verifier also re-checks the template, and its result is logged.
 
+### Beyond numbers (added after the first live Nemotron runs, 2026-11-08)
+
+The number verifier accepts any number that appears *somewhere* in the tool output. Live runs showed three ways a draft can pass it and still be wrong, so the runner adds:
+
+| Check | What it stops |
+|---|---|
+| **Dispatch comes from the plan** | Crew dispatch messages are always built from the endorsed plan's actions (templates), never from LLM text. A live run listed shut-ins from the "one truck fewer" what-if as instructions. |
+| **`fact_check`** | A clock time the summary gives as a tank *shutdown* must be a real shutdown time from the plans. A live run called the 12:46 well shut-in the "earliest tank shutdown". The prompt now also states the first shutdown explicitly. |
+| **`format_check`** | A reply that is tool-call markup (`<tool_call>…`, JSON function calls) or empty is rejected and regenerated. Before the last round the model is told its tool budget is used up. |
+
+The LLM writes only the operator summary. Plans, costs, times and crew instructions all come from `core/`.
+
 ## Trace (`agent_step`)
 
 | `kind` | Meaning |

@@ -1,7 +1,7 @@
 // End-to-end agent run logic with a fake backend and LLM_PROVIDER=template (no network).
 import { describe, expect, it } from 'vitest';
 import { event9Model } from './fixtures';
-import { AgentRunner, parseQuestion, splitSections } from '../../worker/src/agent/runner';
+import { AgentRunner, checkShutdownTimes, firstShutdownFact, looksLikeToolMarkup, parseQuestion, splitSections } from '../../worker/src/agent/runner';
 import { Scheduler } from '../../worker/src/agent/scheduler';
 import { LlmClient, llmConfigFromEnv } from '../../worker/src/agent/llm';
 import type { AgentBackend, AgentState, EventRow } from '../../worker/src/agent/state';
@@ -108,6 +108,49 @@ describe('agent runner (template provider)', () => {
     const broken = { ...backend, loadData: () => { throw new Error('folder gone'); } };
     const r2 = await new AgentRunner(broken, templateLlm()).runSystem(DS, 'SX', ['x'], 'event_new');
     expect(['done', 'failed']).toContain(r2.status);
+  });
+
+  it('crew dispatch always comes from the endorsed plan, never from LLM text', async () => {
+    // Regression (live Nemotron run, 2026-11-08): the model listed actions from a what-if plan in
+    // its DISPATCH section. Every number existed in tool output, so the number check passed it.
+    const { backend, calls, fail } = fakeBackend();
+    class ScriptedLlm extends LlmClient {
+      get enabled() {
+        return true;
+      }
+      async chat() {
+        return {
+          message: { role: 'assistant' as const, content: 'SUMMARY: FAC_C pump down; recommended plan costs $905 vs $5,016 if nothing is done.\nDISPATCH:\n- FAC_C: shut in W_C2 at +125 min.\n- FAC_C: send 2 trucks.' },
+          latencyMs: 1,
+          finishReason: 'stop',
+        };
+      }
+    }
+    const llm = new ScriptedLlm(llmConfigFromEnv({ LLM_PROVIDER: 'brev', LLM_BASE_URL: 'http://127.0.0.1:9/v1', LLM_MODEL: 'x' }));
+    const r = await new AgentRunner(backend, llm).runSystem(DS, 'SX', [fail.eventId], 'event_new');
+    expect(r.status).toBe('done');
+    expect(r.textSource).toBe('llm');
+    const dm = calls.filter((c) => c.name === 'dispatchMessage').map((c) => c.args.text as string);
+    expect(dm).toHaveLength(1);
+    expect(dm[0]).toMatch(/send 1 truck to FAC_C/);
+    expect(dm.join(' ')).not.toMatch(/W_C2|2 trucks/);
+  });
+
+  it('fact check: a well shut-in time stated as a tank shutdown is rejected', () => {
+    const u = (hhmm: string) => Date.parse(`2026-10-08T${hhmm}:00Z`) / 1000;
+    const fac = (id: string, tripIfNothing: string | null, tripUnder: string | null) => ({ facilityId: id, tripsAtUnixIfNothing: tripIfNothing ? u(tripIfNothing) : null, tripsAtUnix: tripUnder ? u(tripUnder) : null }) as any;
+    const plan = { facilities: [fac('S2_FACILITY_B', '13:25', null), fac('S2_FACILITY_C', '14:20', null), fac('S2_FACILITY_A', '14:35', null)] } as any;
+    // the sentence Nemotron actually wrote (12:46 is the well shut-in time)
+    expect(checkShutdownTimes('Earliest tank shutdown is S2_WELL_C1 at 12:46 UTC.', [plan])).toMatch(/12:46/);
+    expect(checkShutdownTimes('The first tank, S2_FACILITY_B, reaches shutdown at 13:25 UTC.', [plan])).toBeNull();
+    expect(checkShutdownTimes('Shut in S2_WELL_C1 at 12:46 UTC so the tank never trips.', [plan])).toBeNull();
+    expect(firstShutdownFact(plan)).toBe('First tank to reach shutdown if nothing is done: S2_FACILITY_B at 13:25 UTC.');
+  });
+
+  it('tool-call markup is never accepted as a summary', () => {
+    expect(looksLikeToolMarkup('<tool_call>\n<function=plan_system>\n<parameter=systemId>\nS2\n</parameter>\n</function>\n</tool_call>')).toBe(true);
+    expect(looksLikeToolMarkup('{"name": "plan_system", "arguments": {}}')).toBe(true);
+    expect(looksLikeToolMarkup('Three pumps failed in S2; the recommended plan costs $3,108.')).toBe(false);
   });
 
   it('LLM down falls back to templates', async () => {

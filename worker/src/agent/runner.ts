@@ -89,8 +89,11 @@ export class AgentRunner {
             `New pump failure alert(s) in ${systemId}. Tool results so far:\n` +
             safeJson({ events, system: sys, baselinePlan: strip(base), whatifs: whatifs.map(strip) }) +
             `\nYou may call plan_system / simulate_tank / compare_plans for up to ${MAX_TOOL_ROUNDS} more what-ifs if useful. ` +
-            `Then reply with exactly two sections:\nSUMMARY: what is failing, when the first tank shuts in, the recommended plan ${base.ref} with its cost vs doing nothing, and the most important what-if (max 80 words).\n` +
-            `DISPATCH: one message per crew to send now (trucks and/or well shut-ins), one line each.`,
+            `${firstShutdownFact(base)} ` +
+            `The RECOMMENDED plan is ${base.ref}; its actions are exactly: ${base.facilities.map((f) => `${f.facilityId}: ${f.summary}`).join('; ')}. ` +
+            `What-if plans are for comparison only: never present their actions as instructions.\n` +
+            `Reply with one section:\nSUMMARY: what is failing, when the first tank shuts in, the recommended plan ${base.ref} (its actions as listed above) with its cost vs doing nothing, and the most important what-if as a comparison (max 80 words).\n` +
+            `Do not write crew dispatch instructions; they are generated from the approved plan.`,
         },
       ];
       if (this.llm.enabled) draft = await this.explore(trace, tools, msgs);
@@ -118,7 +121,7 @@ export class AgentRunner {
       // 7. texts (verified)
       const template = tpl.failureSummary(systemId, base, events, whatifs);
       const dispatchTpl = base.facilities.flatMap((f) => [tpl.truckDispatch(f, base), tpl.shutInDispatch(f)]).filter((x): x is string => !!x);
-      const { summary, dispatch, source } = await this.guardSections(trace, msgs, draft, template, dispatchTpl);
+      const { summary, dispatch, source } = await this.guardSections(trace, msgs, draft, template, dispatchTpl, (text) => checkShutdownTimes(text, [base, ...whatifs]));
       for (const [i, text] of dispatch.entries()) {
         const f = base.facilities[Math.min(i, base.facilities.length - 1)];
         await this.backend.dispatchMessage({ runId, datasetId, planId, eventId: f?.eventId ?? eventIds[0] ?? '', recipient: /inspect/i.test(text) ? 'field inspector' : /truck/i.test(text) ? `truck crew ${systemId}` : 'field crew', text });
@@ -143,7 +146,7 @@ export class AgentRunner {
       const template = tpl.inspectionSummary(e);
       const msgs: ChatMessage[] = [
         { role: 'system', content: SYSTEM_PROMPT },
-        { role: 'user', content: `New alert. Tool result:\n${safeJson(e)}\nReply with:\nSUMMARY: what is wrong, since when, the confidence, the key evidence and that an inspector should go (max 60 words).\nDISPATCH: one line for the field inspector.` },
+        { role: 'user', content: `New alert. Tool result:\n${safeJson(e)}\nReply with:\nSUMMARY: what is wrong, since when, the confidence, the key evidence and that an inspector should go (max 60 words).` },
       ];
       let draft: string | null = null;
       if (this.llm.enabled) draft = await this.draftOnly(trace, msgs);
@@ -235,6 +238,7 @@ export class AgentRunner {
     const specs = ToolBox.specs().filter((s) => s.function.name !== 'propose_plan');
     try {
       for (let round = 0; round <= MAX_TOOL_ROUNDS; round++) {
+        if (round === MAX_TOOL_ROUNDS) msgs.push({ role: 'user', content: 'Tool budget used. Do not call tools. Reply now with the SUMMARY: section in plain sentences.' });
         const r = await this.llm.chat(msgs, round < MAX_TOOL_ROUNDS ? specs : undefined);
         const calls = r.message.tool_calls ?? [];
         await trace.step('llm', 'chat', { round, tools: calls.map((c) => c.function.name) }, calls.length ? `requested ${calls.length} tool call(s)` : (r.message.content ?? '').slice(0, 500), true, r.latencyMs);
@@ -272,17 +276,47 @@ export class AgentRunner {
     }
   }
 
-  /** Verify the LLM draft (SUMMARY / DISPATCH); regenerate up to 2x; else templates. */
-  private async guardSections(trace: Trace, msgs: ChatMessage[], draft: string | null, template: string, dispatchTpl: string[]) {
+  /** Verify the LLM summary; regenerate up to 2x; else templates. Dispatch always comes from the plan. */
+  private async guardSections(
+    trace: Trace,
+    msgs: ChatMessage[],
+    draft: string | null,
+    template: string,
+    dispatchTpl: string[],
+    semantic?: (summary: string) => string | null,
+  ) {
     let text = draft;
     for (let attempt = 0; text != null && attempt <= MAX_REGEN; attempt++) {
-      const { summary, dispatch } = splitSections(text);
-      const full = [summary, ...dispatch].join('\n');
-      const v = verifyText(full, trace.facts);
+      // Only the operator summary comes from the LLM. Crew dispatch messages are always built from
+      // the endorsed plan's own actions, so crews can never get instructions that differ from it
+      // (an LLM can quote real numbers from a what-if plan and still pass the number check).
+      const { summary } = splitSections(text);
+      // A model can emit a tool call as plain text (e.g. after its tool-call budget is used up).
+      // That is not a summary: ask again instead of storing markup.
+      if (looksLikeToolMarkup(summary) || summary.length < 20) {
+        await trace.step('verifier', 'format_check', { attempt }, 'rejected: reply was a tool call or empty, not a summary', false, 0);
+        if (attempt === MAX_REGEN) break;
+        msgs.push({ role: 'user', content: 'Do not call any more tools. Using only the tool results above, reply now with a SUMMARY: section in plain sentences.' });
+        text = await this.draftOnly(trace, msgs);
+        continue;
+      }
+      const v = verifyText(summary, trace.facts);
       await trace.step('verifier', 'number_check', { attempt }, v.ok ? `ok: ${v.claims.length} numbers checked` : `unsupported: ${describeUnsupported(v)}`, v.ok, 0);
-      if (v.ok && summary) return { summary, dispatch: dispatch.length ? dispatch : dispatchTpl, source: 'llm' as const };
+      const sem = v.ok && summary && semantic ? semantic(summary) : null;
+      if (semantic && v.ok && summary) await trace.step('verifier', 'fact_check', { attempt }, sem ? `rejected: ${sem}` : 'ok: shutdown times match the plan', !sem, 0);
+      if (v.ok && summary && !sem) {
+        await trace.step('verifier', 'dispatch_from_plan', {}, `${dispatchTpl.length} dispatch message(s) built from the endorsed plan's actions`, true, 0);
+        return { summary, dispatch: dispatchTpl, source: 'llm' as const };
+      }
       if (attempt === MAX_REGEN) break;
-      msgs.push({ role: 'user', content: v.ok ? 'Your reply had no SUMMARY section. Reply again with SUMMARY: and DISPATCH: sections.' : `These numbers are not in the tool results: ${describeUnsupported(v)}. Rewrite using only numbers that appear in the tool results. Keep the same sections.` });
+      msgs.push({
+        role: 'user',
+        content: sem
+          ? `${sem} Rewrite the SUMMARY with the correct facts from the tool results.`
+          : v.ok
+            ? 'Your reply had no SUMMARY section. Reply again with a SUMMARY: section.'
+            : `These numbers are not in the tool results: ${describeUnsupported(v)}. Rewrite using only numbers that appear in the tool results. Keep the SUMMARY section.`,
+      });
       text = await this.draftOnly(trace, msgs);
     }
     const v = verifyText([template, ...dispatchTpl].join('\n'), trace.facts);
@@ -365,4 +399,45 @@ export function parseQuestion(text: string, systems: { id: string; fleet: number
       return o;
     },
   };
+}
+
+const HHMM = (u: number) => new Date(u * 1000).toISOString().slice(11, 16);
+
+/** "First tank to reach shutdown if nothing is done: <facility> at HH:MM UTC." from the plan. */
+export function firstShutdownFact(plan: PlanSummary): string {
+  const f = plan.facilities.filter((x) => x.tripsAtUnixIfNothing != null).sort((a, b) => a.tripsAtUnixIfNothing! - b.tripsAtUnixIfNothing!)[0];
+  return f
+    ? `First tank to reach shutdown if nothing is done: ${f.facilityId} at ${HHMM(f.tripsAtUnixIfNothing!)} UTC.`
+    : 'No tank reaches shutdown before its repair ends, even if nothing is done.';
+}
+
+/**
+ * Fact check beyond numbers: a clock time stated as a tank *shutdown* (not a well shut-in) must be
+ * a real shutdown time from the plans (trip if nothing is done, or trip under a plan). The number
+ * verifier alone accepts any time that appears anywhere in tool output.
+ */
+export function checkShutdownTimes(text: string, plans: PlanSummary[]): string | null {
+  const allowed = new Set<string>();
+  for (const p of plans)
+    for (const f of p.facilities) {
+      if (f.tripsAtUnixIfNothing != null) allowed.add(HHMM(f.tripsAtUnixIfNothing));
+      if (f.tripsAtUnix != null) allowed.add(HHMM(f.tripsAtUnix));
+    }
+  const bad: string[] = [];
+  for (const sentence of text.split(/(?<=[.;!?])\s+/)) {
+    if (!/shut\s?-?down|reach(?:es|ing)? (?:its )?(?:shutdown|limit)|\btrips?\b(?! (?:per|each))/i.test(sentence)) continue;
+    for (const m of sentence.matchAll(/\b(\d{1,2}):(\d{2})\b/g)) {
+      const t = `${m[1].padStart(2, '0')}:${m[2]}`;
+      // a time right after "shut in <well>" is a well action, not a tank shutdown
+      const before = sentence.slice(0, m.index);
+      if (/shut[\s-]in\b[^.;]*$/i.test(before) && !/shut\s?-?down[^.;]*$/i.test(before)) continue;
+      if (!allowed.has(t)) bad.push(t);
+    }
+  }
+  return bad.length ? `The summary gives ${[...new Set(bad)].join(', ')} as a tank shutdown time, but the plans' shutdown times are ${[...allowed].sort().join(', ') || 'none'}.` : null;
+}
+
+/** tool-call markup leaking into text (qwen3-coder XML style, JSON function calls, chat-template tags) */
+export function looksLikeToolMarkup(text: string): boolean {
+  return /<\/?tool_call>|<function=|<\/?parameter[=>]|^\s*\{\s*"(name|function)"\s*:|<\|im_(start|end)\|>/m.test(text);
 }

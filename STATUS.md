@@ -50,6 +50,16 @@ _Last updated: 2026-11-07 23:40 CT · 9 PM–2 AM milestones done · ML integrat
   - **Decision: keep Hadent's current model.**
 - LLM: provider `brev`, key in `LLM_API_KEY`. Brev CLI installed on this laptop (v0.6.337); waiting on `brev login`, then `brev port-forward <instance> --port 8000:8000` → `LLM_BASE_URL=http://127.0.0.1:8000/v1`, and `LLM_MODEL` = the name from `/v1/models`.
 
+## Nemotron live (2026-11-08 02:10)
+- Endpoint: Hadent's vLLM on Brev, through the Brev tunnel URL (`LLM_PROVIDER=brev`, key in `LLM_API_KEY`). Served model `nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-FP8`; tool calling works; warm latency 0.23 s (first call after idle about 21 s, so `LLM_TIMEOUT_MS=30000`).
+- Live runs (full_week at 10-08 12:00, three S2 failures sharing 2 trucks): S2 runs **2.3–5.5 s** written by Nemotron; inspections about 1 s. Endorses the planner's $3,108 plan (= reference).
+- **Guardrail gaps found live and fixed:**
+  1. LLM dispatch lines mixed in what-if actions. Dispatch is now always built from the endorsed plan.
+  2. "Earliest tank shutdown" was given the well shut-in time. Added a shutdown-time fact check, and the first-shutdown fact is now in the prompt.
+  3. Tool-call markup was emitted as the summary. Added a format check and a final-round instruction.
+  Regression tests for all three (41 tests pass). After the fixes, 3 of 3 live runs were correct.
+- The `.env` worker key had to be re-registered with the module (it changed while keys were moved). I also accidentally glued `LLM_TIMEOUT_MS` onto the `WORKER_KEY` line (no trailing newline) and fixed it.
+
 ## Contradictions / ambiguities with the spec or the EOG docs (please review)
 1. ~~Plans $15–27 cheaper than the reference~~ **Fixed (23:40): plans now match the key exactly.** The key plans from the level rounded to 0.1 points (its `level_final_pct` precision), and at onset it uses the simulator's set level. We now plan from the de-noised level (fixed-slope fit since onset) rounded to 0.1. Result: all 3 snapshot system plans equal the reference to the dollar ($3,108 / $1,810 / $3,095), with identical shut-in minutes. All 13 full-week replay plans are identical (the total differs by $1 only because the key's `~$` figures are rounded).
 2. **"Accept the trip" plans.** We only consider plans that prevent the trip, or doing nothing, matching SPEC ("cheapest plan that keeps the tank from tripping, or accept the trip"). Partial plans (trucks that only delay the trip) are not searched. No reference plan in the history data needs them.
