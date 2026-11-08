@@ -362,6 +362,9 @@ export function recompute(ctx: Ctx, datasetId: string): AnalyzeOutput | null {
       wellsProducing: s.wellsProducing,
       wellsTotal: s.wellsTotal,
       health: alertFacilities.has(s.facilityId) ? 'alert' : s.levelPct >= model.warningPct ? 'warning' : 'ok',
+      wellIds: s.wellIds,
+      wellStatus: s.wellStatus,
+      wellWaterBpd: s.wellWaterBpd,
     };
     if (ctx.db.facilityState.key.find(key)) ctx.db.facilityState.key.update(row);
     else ctx.db.facilityState.insert(row);

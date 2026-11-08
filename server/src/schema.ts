@@ -229,6 +229,10 @@ const facilityState = table(
     wellsTotal: t.u32(),
     /** 'ok' | 'warning' (level >= warning) | 'alert' (has an ongoing event) */
     health: t.string(),
+    /** per-well readings at asOfUnix, aligned arrays */
+    wellIds: t.array(t.string()).default([]),
+    wellStatus: t.array(t.f64()).default([]),
+    wellWaterBpd: t.array(t.f64()).default([]),
   },
 );
 

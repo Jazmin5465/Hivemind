@@ -251,5 +251,8 @@ export function facilitySnapshot(model: DatasetModel, grid: Grid, asOfUnix: numb
       return !Number.isFinite(s) || s >= 0.5;
     }).length,
     wellsTotal: f.wells.length,
+    wellIds: f.wells.map((w) => w.id),
+    wellStatus: f.wells.map((w) => val(w.id, 'status')),
+    wellWaterBpd: f.wells.map((w) => val(w.id, 'water_bpd')),
   }));
 }

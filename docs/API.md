@@ -98,7 +98,7 @@ Each facility has one tank, one pump and one pipeline. Their IDs are the columns
 ### Live state and telemetry
 
 **`facility_state`** (PK `key`): the latest readings at `sim_clock.nowUnix`, for the map.
-`facilityId`, `systemId`, `asOfUnix`, `levelPct`, `inflowBpd`, `pumpStatus` (0 stopped, 1 running, 2 fault), `pumpFlowBpd`, `dischargePsi`, `receiveFlowBpd`, `pipelinePressurePsi`, `wellsProducing`, `wellsTotal`, **`health`** (`ok` | `warning` (level ≥ warning) | `alert` (has an ongoing event)).
+`facilityId`, `systemId`, `asOfUnix`, `levelPct`, `inflowBpd`, `pumpStatus` (0 stopped, 1 running, 2 fault), `pumpFlowBpd`, `dischargePsi`, `receiveFlowBpd`, `pipelinePressurePsi`, `wellsProducing`, `wellsTotal`, **`health`** (`ok` | `warning` (level ≥ warning) | `alert` (has an ongoing event)), and per-well arrays `wellIds`, `wellStatus` (1 producing, 0 shut in), `wellWaterBpd`.
 
 **`series`** (PK `id`): telemetry as chunked arrays. One row per (asset, metric, day).
 `datasetId`, `assetId`, `metric`, `chunkIdx`, `t0` (ts of `values[0]`), `stepSec`, `values: number[]` (`NaN` = missing). The timestamp of `values[i]` is `t0 + i * stepSec`. Concatenate rows by `chunkIdx` to get a full series. **Only plot points with ts ≤ `sim_clock.nowUnix`**: the rows hold the whole recording, and the clock decides what counts as "now".
