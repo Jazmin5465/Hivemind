@@ -22,7 +22,8 @@
     "flip:drill": "bash scripts/flip-to-test.sh --drill",
     "setup": "bash scripts/setup-local.sh",
     "eval:ml": "tsx scripts/eval/ml_eval.ts",
-    "ml": "bash scripts/run-ml.sh"
+    "ml": "bash scripts/run-ml.sh",
+    "export:events": "tsx worker/src/cli/export-events.ts"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
