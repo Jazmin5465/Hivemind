@@ -9,7 +9,7 @@ dist/
 __pycache__/
 *.pyc
 # local-only prompt files
-hivemind_backend_spec.md
-ml_contract.md
+/hivemind_backend_spec.md
+/ml_contract.md
 .spacetime/
 scripts/eval/out/
