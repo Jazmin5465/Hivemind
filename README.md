@@ -1,17 +1,17 @@
 # Hivemind
 
+> ## 🏆 1st Place, EOG *Beat the Shutdown* Track, HackUTD: Zero Day (2026)
+
 **A night-shift operations console for salt water disposal networks.** Built at HackUTD: Zero Day for EOG's *Beat the Shutdown* challenge, on **SpacetimeDB**, with an **NVIDIA Nemotron** agent.
 
 Hivemind finds pump failures, pipeline leaks and worn pumps in raw sensor data, counts down to each tank's shutdown, plans the cheapest response across a whole system of sites that share one truck fleet, and explains every decision in plain English.
 
 | | |
 |---|---|
-| **Devpost** | [DEVPOST_LINK_HERE](https://devpost.com/software/hivemind-lnhy8g?ref_content=user-portfolio&ref_feature=in_progress) |
-| **Demo video** | [YOUTUBE_LINK_HERE](https://www.youtube.com/watch?v=tDWAyvH1agU) |
-| **Tracks** | EOG *Beat the Shutdown* · NVIDIA Nemotron *beyond a chatbot* · SpacetimeDB |
-
-<!-- To fill in: replace DEVPOST_LINK_HERE and YOUTUBE_LINK_HERE with the full URLs, and
-     YOUTUBE_VIDEO_ID with the id from the video URL (the part after "watch?v="). -->
+| **Award** | 🏆 **1st place, EOG *Beat the Shutdown* track** |
+| **Devpost** | [Hivemind on Devpost](https://devpost.com/software/hivemind-lnhy8g?ref_content=user-portfolio&ref_feature=in_progress) |
+| **Demo video** | [Watch on YouTube](https://www.youtube.com/watch?v=tDWAyvH1agU) |
+| **Tracks** | EOG *Beat the Shutdown* (🏆 1st place) · NVIDIA Nemotron *beyond a chatbot* · SpacetimeDB |
 
 ---
 
